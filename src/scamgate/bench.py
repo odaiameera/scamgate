@@ -52,7 +52,7 @@ def run_scenario(s: dict) -> Result:
     if kind == "url":
         verdict = engine.check_url(inp["url"], inp.get("intent"))
     elif kind == "payment":
-        verdict = engine.check_payment(PaymentCheck(**inp))
+        verdict = engine.check_payment(PaymentCheck(**inp), use_history=False)  # scenario input is ground truth
     else:
         raise ValueError(f"{s['id']}: unknown kind {kind!r}")
     label = s["label"]

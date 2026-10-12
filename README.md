@@ -130,6 +130,86 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
 `Verdict` = `decision`, `risk_score`, `reasons[]` (`rule_id`, `explanation`, `weight`),
 `summary`, `warnings[]`, `advisory`.
 
+## Enforce it with a hook
+
+The MCP tools only work when the agent chooses to call them, and a prompt injection can tell
+it not to. The hook moves the check into the harness: the agent can't skip it.
+
+`scamgate-hook` (or `scamgate hook`) reads one hook event as JSON on stdin and writes a decision.
+It speaks Hermes shell hooks and Claude Code `PreToolUse` hooks.
+
+- **Links:** every URL in a web, browser, media, terminal or code tool call is checked.
+  `deny` blocks the call, `ask` sends it to you for approval.
+- **Opaque network calls** (`curl "$URL"`, `requests.get(u)`): scamgate can't see the
+  destination, so you approve it.
+- **Tampering:** blocks agent writes to scamgate's own code and state and to the hook config,
+  plus commands that revoke the hook, remove the server or promote rules.
+- **Fails closed:** bad input or an internal error blocks the call (exit 2).
+- **Never says "allow".** Silence means "no objection", so it can only tighten your agent's
+  permissions, never loosen them.
+
+**Hermes** (`~/.hermes/config.yaml`), then approve it once with `hermes hooks list`:
+
+```yaml
+hooks:
+  pre_tool_call:
+    - matcher: "browser_.*|web_extract|vision_analyze|video_analyze|terminal|execute_code|write_file|patch"
+      command: "scamgate-hook"
+      timeout: 15
+      fail_closed: true
+  post_tool_call:   # optional: records whether you approved each ask
+    - matcher: "browser_.*|web_extract|vision_analyze|video_analyze|terminal|execute_code"
+      command: "scamgate-hook"
+      timeout: 15
+```
+
+**Claude Code** (`.claude/settings.json`):
+
+```json
+{"hooks": {
+  "PreToolUse":  [{"matcher": "WebFetch|Bash|Write|Edit|mcp__.*browser.*",
+                   "hooks": [{"type": "command", "command": "scamgate-hook", "timeout": 15}]}],
+  "PostToolUse": [{"matcher": "WebFetch|Bash|mcp__.*browser.*",
+                   "hooks": [{"type": "command", "command": "scamgate-hook"}]}]
+}}
+```
+
+Install a pinned copy for the hook (`uv tool install git+https://github.com/odaiameera/scamgate@<tag>`)
+rather than running from a source checkout: an installed copy verifies its own files against the
+wheel's RECORD hashes on every call and blocks everything if they changed. A source checkout
+has nothing to verify against.
+
+Each gated call costs one process start (about 0.7 s on Windows). Calls that don't touch
+the network, or scamgate's files, pass straight through.
+
+### Ask log, review and promote
+
+Every `ask` and `deny` is logged to `$SCAMGATE_STATE_DIR` (default `~/.local/state/scamgate`)
+with redacted targets, the rules that fired, the score, the agent's stated reason (stored,
+marked **untrusted**, never used automatically) and whether you then let it run.
+
+```bash
+scamgate review --days 7                       # which hosts keep tripping it, and what you did
+scamgate promote --host shop.example --decision deny
+scamgate promote --host shop.example --decision allow --rule url.userinfo
+```
+
+`promote` asks for confirmation and the hook blocks agents from running it. A `deny` covers the
+host and its subdomains. An `allow` is narrow: it waives **one rule on one exact host**, and can
+never waive known-bad feeds, your blocklist or intent checks, so an attacker can't train the
+gate into trusting a whole domain.
+
+### Payee history
+
+`check_payment` doesn't take the agent's word for `is_new_payee`. It looks the payee up in a
+local history of people you've actually paid (stored as salted hashes, never names or account
+numbers). A payee you've paid before showing up with a different account is treated as changed
+bank details.
+
+```bash
+scamgate record-payment --payee "Acme Ltd" --account IE29AIBK93115212345678
+```
+
 ## Known-bad-link feeds
 
 Only `scamgate update-feeds` touches the network. Checks read a local cache. No feed data is
@@ -204,15 +284,20 @@ runs the unit tests (61 passing). They use fixtures and never touch the network.
 
 ## Limits
 
-- **Advisory only.** It warns the agent; it cannot block a payment or a page load. The agent
-  has to call it and respect the answer.
+- **Advisory by default.** Over MCP it only warns, and the agent has to call it. Install the
+  [hook](#enforce-it-with-a-hook) to enforce it. Even then it only sees tool calls: a link the
+  agent reaches by a redirect, or a destination hidden in a variable, needs your approval
+  rather than a check.
 - Heuristic rules miss scams that don't match them and sometimes flag legitimate actions.
   Treat `allow` as "no known red flags", not "safe".
 - The domain-age check (`url.domain_age`) is a stub and off by default.
 - Known misses: `applebees.com` scores 60 (**ask**) because it contains "apple". A bank
   transfer to a new payee with no other signals scores 20 (**allow**).
 - The brand list is small, and there's no full Public Suffix List handling yet.
-- Payment checks rely on what the agent passes in. scamgate doesn't verify IBANs or call your bank.
+- Payee history only knows payees you've recorded with `record-payment`. scamgate doesn't
+  verify IBANs or call your bank.
+- Tamper protection stops an agent's normal tools. It isn't a sandbox: anything with full
+  control of your account can still change scamgate's files.
 
 **Disclaimer:** scamgate is not financial, legal or security advice, and it doesn't replace your
 bank's fraud controls, Verification of Payee, or human judgement.
@@ -221,6 +306,7 @@ bank's fraud controls, Verification of Payee, or human judgement.
 
 - Domain age via RDAP, behind the existing `url.domain_age` hook
 - IBAN checksum validation and Verification of Payee integration
+- Redirect after-check: re-check the page a browser actually landed on
 - Optional local model as a tie-breaker on vague cases only, never overruling a hard rule
 - Bigger, configurable brand list and proper Public Suffix List handling
 - More scenarios based on real fraud typologies

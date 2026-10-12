@@ -6,7 +6,7 @@ def pay(**kw):
     base = dict(payee_name="Acme Ltd", payee_account="IE29AIBK93115212345678",
                 amount=100, currency="EUR", method="card")
     base.update(kw)
-    return check_payment(PaymentCheck(**base))
+    return check_payment(PaymentCheck(**base), use_history=False)
 
 
 def ids(v):
