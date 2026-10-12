@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Callable, Iterable
 from urllib.parse import urlsplit, urlunsplit
 
+from scamgate.hostnorm import canon_host
+
 ENV_CACHE_DIR = "SCAMGATE_CACHE_DIR"
 ENV_URLHAUS_KEY = "SCAMGATE_URLHAUS_AUTH_KEY"
 USER_AGENT = "scamgate/0.1 (+https://github.com/odaiameera/scamgate)"
@@ -46,7 +48,7 @@ def normalize_url(url: str) -> str | None:
         raw = "http://" + raw
     try:
         p = urlsplit(raw)
-        host = (p.hostname or "").lower().rstrip(".")
+        host = canon_host(p.hostname or "")
         port = p.port
     except ValueError:
         return None
@@ -72,7 +74,7 @@ def normalize_host(value: str) -> str | None:
             v = urlsplit(v).hostname or ""
         except ValueError:
             return None
-    v = v.split("/", 1)[0].split(":", 1)[0].rstrip(".")
+    v = canon_host(v.split("/", 1)[0].split(":", 1)[0])
     if not v or "." not in v or " " in v:
         return None
     return v

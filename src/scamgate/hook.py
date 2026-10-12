@@ -7,10 +7,10 @@ It speaks two dialects:
 - Claude Code hooks (`PreToolUse` / `PostToolUse`): {"hookSpecificOutput": {"permissionDecision": ...}}
 
 What it gates (pre events):
-1. Tamper attempts: writes to scamgate's own files/state or the agent's hook config, and shell
+1. Tamper attempts: writes to scamgate's own files/state/cache or the agent's hook config, and shell
    commands that remove the hook/MCP server or promote overrides. Always blocked.
 2. Network-capable tools: every URL found in the arguments is checked. deny -> block,
-   ask -> human approval. A network call whose destination can't be read -> human approval.
+   ask -> human approval. A network step whose destination can't be read -> human approval.
 3. Everything else passes silently.
 
 Never returns "allow": silence means "no objection", so the hook can only tighten the
@@ -21,6 +21,7 @@ Fails closed: bad input or an internal error on a pre event blocks the call (exi
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -35,6 +36,9 @@ from scamgate.rules.url import parse
 from scamgate.state import state_dir
 
 MAX_URLS = 20
+MAX_INPUT_BYTES = 2 * 1024 * 1024
+MAX_DEPTH = 64
+STALE_FOR_HOOK_HOURS = 7 * 24
 
 # ------------------------------------------------------------------ tool classes
 
@@ -46,20 +50,52 @@ CODE_TOOLS = {  # tools whose arguments are code/commands that may reach the net
     "powershell", "python",
 }
 WRITE_TOOLS = {"write_file", "patch", "write", "edit", "multiedit", "notebookedit", "str_replace_editor"}
-URL_KEYS = ("url", "urls", "link", "href", "target", "uri", "endpoint", "page", "image_url", "video_url")
-CODE_KEYS = ("command", "code", "script", "expression", "cmd", "input")
+# Tools whose text is a note, a search query or a message, not a visit.
+QUIET_TOOLS = {"memory", "todo", "todo_list", "todowrite", "clarify", "send_message", "skill_manage",
+               "hindsight_retain", "context_notes", "web_search", "websearch", "read_file", "search_files",
+               "skill_view", "skills_list", "text_to_speech", "image_generate", "browser_click",
+               "browser_snapshot", "browser_scroll", "browser_press", "browser_back"}
+# Name fragments that mark an unknown (usually MCP) tool as able to reach the network.
+NET_TOOL_HINT = re.compile(r"(?i)fetch|navigat|browser|browse|url|http|request|download|crawl|scrape|"
+                           r"open_?page|visit|goto|shell|exec|run_?(?:command|code|script)|terminal|curl|"
+                           r"evaluate|web")
+URL_KEYS = ("url", "urls", "link", "href", "target", "uri", "endpoint", "page", "image_url", "video_url",
+            "address", "location", "src", "source_url", "website")
+CODE_KEYS = ("command", "code", "script", "expression", "cmd", "input", "cmdline", "function", "args", "argv")
 PATH_KEYS = ("path", "file_path", "filepath", "notebook_path", "target_file")
 REASON_KEYS = ("description", "prompt", "intent", "reason", "task", "goal")
 
 _URL_RE = re.compile(r"""(?i)\b(?:https?|wss?|ftp)://[^\s'"<>`)\]}\\]+""")
+# A URL whose host is built at run time: variables, templates, string concatenation.
+_DYNAMIC_URL_RE = re.compile(
+    r"""(?ix)\b(?:https?|wss?|ftp)://
+        (?: [^\s/'"`]*[$%{}`]                  # $H, ${H}, %H%, {host}, `cmd` in the host part
+          | [^\s/'"`]*['"`]\s*(?:\+|\.\s|['"])  # 'https://evil'+'shop', "https://evil""shop"
+          | ['"`] )""")
 _NET_RE = re.compile(
-    r"(?i)\b(curl|wget|aria2c|httpie|\bhttp\b|nc|ncat|telnet|ssh|scp|sftp|rsync|ftp|"
-    r"invoke-webrequest|invoke-restmethod|iwr|irm|start-bitstransfer|"
-    r"requests\.|httpx\.|urllib|urlopen|aiohttp|socket\.|fetch\(|xmlhttprequest|websocket|"
-    r"new_tab\(|goto_url\(|goto\(|navigate\(|page\.goto|window\.open|location\.href|"
-    r"web_search\(|web_extract\(|webbrowser\.open|start\s+https?|open\s+https?|"
-    r"git\s+clone|pip\s+install|uv\s+(?:pip|add|tool)|npm\s+(?:i|install)|npx\s)"
+    r"(?i)(?:(?<![\w.-])(?:curl|wget|aria2c|httpie|http|nc|ncat|telnet|ssh|scp|sftp|rsync|ftp|tftp|socat|"
+    r"nslookup|dig|host|ping|traceroute|"
+    r"invoke-webrequest|invoke-restmethod|iwr|irm|start-bitstransfer|start-process|certutil|bitsadmin|"
+    r"xdg-open|open|start|explorer|"
+    r"pipx|uvx|npx|bunx)(?![\w.-])|"
+    # Package managers: only the subcommands that download something.
+    r"(?<![\w.-])(?:pip3?|poetry|conda|npm|yarn|pnpm|bun|deno|gem|cargo|go|brew|winget|choco|scoop|apt|apt-get|"
+    r"docker|podman|helm)\s+(?:install|i|add|ci|update|upgrade|fetch|get|pull|download|publish|push|dlx|"
+    r"create|search|source|run\s+https?)\b|"
+    r"(?<![\w.-])(?:yarn|pnpm|bun)(?:\s*$|\s+--)|"           # bare 'yarn' / 'pnpm' installs
+    r"(?<![\w.-])kubectl\s+(?:apply|create)\s+-f\s+https?|"
+    r"\bgit\s+(?:clone|fetch|pull|push|submodule|ls-remote|remote\s+add)\b|"
+    r"\buv\s+(?:pip|add|tool|sync|run\s+--with)\b|"
+    r"requests\.|httpx\.|urllib|urlopen|aiohttp|socket\.|http\.client|ftplib|smtplib|"
+    r"\bfetch\(|xmlhttprequest|websocket|navigator\.sendbeacon|"
+    r"new_tab\(|goto_url\(|goto\(|navigate\(|page\.goto|window\.open|location\.(?:href|assign|replace)|"
+    r"web_search\(|web_extract\(|webbrowser\.open|net\.webclient|downloadstring|downloadfile)"
 )
+# Signs a network step's destination is hidden in a variable, a file, a subshell or stdin.
+_INDIRECT_RE = re.compile(r"""(?x)\$\{?\w|\$\(|`|<\(|%\w+%|\bopen\(|\.read\(\)|\bxargs\b|
+                              \s-K\s|--config\b|\s-i\s|--input-file""")
+_SEGMENT_SPLIT = re.compile(r"\n|;|&&|\|\||\|")
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 _TAMPER_CMD = re.compile(
     r"(?i)(hermes\s+(?:hooks\s+(?:revoke|rm|remove)|mcp\s+(?:rm|remove)|plugins\s+(?:disable|remove)|"
     r"config\s+set\s+(?:hooks\b|hooks_auto_accept|mcp_servers))|"
@@ -100,10 +136,13 @@ def _norm_path(p: str) -> str:
 
 
 def protected_roots() -> list[str]:
+    from scamgate.feeds import cache_dir
+
     roots: list[str] = []
     pkg = Path(__file__).resolve().parent
     roots.append(str(pkg))
     roots.append(str(state_dir()))
+    roots.append(str(cache_dir()))
     if env := os.environ.get("SCAMGATE_CONFIG"):
         roots.append(env)
     if env := os.environ.get("SCAMGATE_BLOCKLIST"):
@@ -143,16 +182,23 @@ class Gate:
     tool: str
     urls: list[str] = field(default_factory=list)
     opaque_network: bool = False
+    opaque_detail: str = ""
     stated_reason: str = ""
 
+    def opaque(self, detail: str) -> None:
+        self.opaque_network = True
+        self.opaque_detail = self.opaque_detail or detail
 
-def _strings(value: Any) -> list[str]:
+
+def _strings(value: Any, depth: int = 0) -> list[str]:
+    if depth > MAX_DEPTH:
+        raise ValueError(f"tool input nested more than {MAX_DEPTH} levels")
     if isinstance(value, str):
         return [value]
     if isinstance(value, (list, tuple)):
-        return [s for v in value for s in _strings(v)]
+        return [s for v in value for s in _strings(v, depth + 1)]
     if isinstance(value, dict):
-        return [s for v in value.values() for s in _strings(v)]
+        return [s for v in value.values() for s in _strings(v, depth + 1)]
     return []
 
 
@@ -166,40 +212,104 @@ def _first_comment(code: str) -> str:
     return ""
 
 
+_BARE_HOST = re.compile(r"^[\w.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#].*)?$", re.I)
+_HOST_TOKEN = re.compile(r"(?i)(?<![\w@/.:$-])((?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:/[^\s'\"`;|&]*)?)(?![\w-])")
+_NOT_A_HOST = re.compile(r"(?i)\.(?:py|js|mjs|ts|sh|json|ya?ml|toml|md|txt|csv|html?|css|lock|cfg|ini|exe|zip|tar|"
+                         r"gz|png|jpe?g|gif|pdf|log|env|whl|ps1|bat|cmd|get|post|read|text|status_code)$")
+
+
 def _looks_like_bare_host(s: str) -> bool:
     s = s.strip()
-    return bool(s) and " " not in s and "." in s and not s.startswith(("/", ".", "~")) \
-        and bool(re.match(r"^[\w.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#].*)?$", s, re.I))
+    return bool(s) and " " not in s and "." in s and not s.startswith(("/", ".", "~")) and bool(_BARE_HOST.match(s))
+
+
+def _bare_hosts(segment: str) -> list[str]:
+    out = []
+    for tok in _HOST_TOKEN.findall(segment):
+        host = tok.split("/", 1)[0].split(":", 1)[0]
+        if _NOT_A_HOST.search(host) or host.lower().split(".")[-1] in {"get", "post", "run", "main"}:
+            continue
+        out.append(tok)
+    return out
+
+
+def _is_local(url: str) -> bool:
+    return parse(url).host in _LOCAL_HOSTS
+
+
+def _segments(code: str) -> list[str]:
+    return [s.strip() for s in _SEGMENT_SPLIT.split(code) if s.strip()]
+
+
+def _scan_code(code: str, g: Gate) -> None:
+    """URLs, bare hosts after network commands, and opaque network steps, judged per segment."""
+    g.urls += _URL_RE.findall(code)
+    if m := _DYNAMIC_URL_RE.search(code):
+        g.opaque(f"a link built at run time ({m.group(0).strip()[:40]})")
+    is_program = any(k in code for k in ("import ", "def ", "const ", "await ", "=>", "require("))
+    has_literal = bool(_URL_RE.search(code))
+    for seg in _segments(code):
+        if seg.lstrip().startswith(("#", "//")) or not _NET_RE.search(seg):
+            continue
+        seg_urls = _URL_RE.findall(seg)
+        bare = _bare_hosts(seg) if not seg_urls else []
+        g.urls += bare
+        indirect = bool(_INDIRECT_RE.search(seg))
+        if (seg_urls or bare) and not indirect:
+            continue
+        if is_program and has_literal and not indirect:
+            continue  # url = "https://..." on one line, requests.get(url) on the next
+        g.opaque(f"'{seg[:60]}'")
 
 
 def extract(tool: str, tool_input: dict) -> Gate:
     t = _canon_tool(tool)
     g = Gate(tool=tool)
+    everything = _strings(tool_input)  # also enforces MAX_DEPTH for every tool
     for k in REASON_KEYS:
         if isinstance(tool_input.get(k), str):
             g.stated_reason = tool_input[k]
             break
+    if t in QUIET_TOOLS or t in WRITE_TOOLS:
+        return g
+    netty = t in URL_TOOLS or bool(NET_TOOL_HINT.search(t))
     if t in URL_TOOLS or any(k in tool_input for k in URL_KEYS):
         for k in URL_KEYS:
             for s in _strings(tool_input.get(k)):
                 found = _URL_RE.findall(s)
                 if found:
                     g.urls += found
+                    if _DYNAMIC_URL_RE.search(s):
+                        g.opaque("a link built at run time")
                 elif _looks_like_bare_host(s):
                     g.urls.append(s.strip())
+                elif s.strip() and netty:
+                    g.opaque(f"a destination scamgate can't read ('{s.strip()[:40]}')")
+        if t in URL_TOOLS:
+            for s in everything:
+                g.urls += _URL_RE.findall(s)
         if t in URL_TOOLS and not g.urls:
-            g.opaque_network = True
+            g.opaque("no readable link")
     if t in CODE_TOOLS:
         code = "\n".join(_strings({k: tool_input.get(k) for k in CODE_KEYS}))
-        g.urls += _URL_RE.findall(code)
         if not g.stated_reason:
             g.stated_reason = _first_comment(code)
-        if not g.urls and _NET_RE.search(code):
-            g.opaque_network = True
+        _scan_code(code, g)
+    elif t not in URL_TOOLS:
+        # Unknown tool (often MCP): any link anywhere in its arguments is checked, and network-ish
+        # tools get their code-like arguments scanned like a shell command.
+        for s in everything:
+            g.urls += _URL_RE.findall(s)
+        if netty:
+            code = "\n".join(_strings({k: tool_input.get(k) for k in CODE_KEYS}))
+            if code:
+                _scan_code(code, g)
+            if any(_DYNAMIC_URL_RE.search(s) for s in everything):
+                g.opaque("a link built at run time")
     seen, out = set(), []
     for u in g.urls:
         u = u.rstrip(".,;:'\"")
-        if u not in seen:
+        if u and u not in seen:
             seen.add(u)
             out.append(u)
     g.urls = out
@@ -214,7 +324,7 @@ def _tamper_reason(tool: str, tool_input: dict) -> str | None:
             v = tool_input.get(k)
             if isinstance(v, str) and (hit := _is_protected(v, roots)):
                 return f"it would change scamgate's protected files ({hit})"
-    if t in CODE_TOOLS:
+    if t in CODE_TOOLS or (t not in QUIET_TOOLS and NET_TOOL_HINT.search(t)):
         code = "\n".join(_strings({k: tool_input.get(k) for k in CODE_KEYS}))
         if m := _TAMPER_CMD.search(code):
             return f"the command would weaken or remove the scam gate ('{m.group(0).strip()}')"
@@ -248,15 +358,40 @@ def _feeds() -> Any:
     return _FEEDS
 
 
+def _feed_status() -> str | None:
+    """None when the feeds are fine, else a short warning for the human."""
+    f = _feeds()
+    if not f:
+        return ("No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. "
+                "Run `scamgate update-feeds`.")
+    if stale := f.stale_feeds(hours=STALE_FOR_HOOK_HOURS):
+        return f"scamgate's phishing lists are out of date ({', '.join(sorted(stale))}). Run `scamgate update-feeds`."
+    return None
+
+
+def _feeds_policy() -> str:
+    return (os.environ.get("SCAMGATE_NO_FEEDS") or "ask").strip().lower()
+
+
+def _key(*parts: str) -> str:
+    return hashlib.sha256("\0".join(parts).encode()).hexdigest()[:10]
+
+
+def _check(url: str, reason: str) -> Any:
+    """Score a URL. The agent's stated reason may add risk, never remove it."""
+    base = engine.check_url(url, None, feeds=_feeds())
+    if not reason:
+        return base
+    with_reason = engine.check_url(url, reason, feeds=_feeds())
+    return with_reason if with_reason.risk_score > base.risk_score else base
+
+
 def _evaluate(g: Gate) -> Result:
-    if len(g.urls) > MAX_URLS:
-        return Result("approve", f"scamgate: this call opens {len(g.urls)} links at once, too many to check. "
-                                 "Confirm before it runs.", "scamgate:bulk", [], 0, [])
-    worst, worst_v, worst_url = Decision.allow, None, None
     rank = {Decision.allow: 0, Decision.ask: 1, Decision.deny: 2}
+    worst, worst_v, worst_url = Decision.allow, None, None
     hosts, rules = [], []
     for u in g.urls:
-        v = engine.check_url(u, g.stated_reason or None, feeds=_feeds())
+        v = _check(u, g.stated_reason)
         h = parse(u).host
         if h:
             hosts.append(h)
@@ -271,15 +406,26 @@ def _evaluate(g: Gate) -> Result:
                       f"scamgate blocked this: {worst_v.summary} (score {worst_v.risk_score}/100, link host: {h}). "
                       "Don't retry it another way. Tell the user what was blocked and why.",
                       None, rules, worst_v.risk_score, hosts)
+    if len(g.urls) > MAX_URLS:
+        return Result("approve", f"scamgate: this call opens {len(g.urls)} links at once. None is on a known-bad "
+                                 "list, but that's too many to review one by one. Approve once, only if you expect this.",
+                      f"scamgate:bulk:{_key(*sorted(g.urls))}", ["hook.bulk"], 0, hosts)
     if worst is Decision.ask:
         h = parse(worst_url).host
+        fired = sorted({r.rule_id for r in worst_v.reasons})
         return Result("approve", f"scamgate: {worst_v.summary} (score {worst_v.risk_score}/100). "
                                  "Approve only if you trust where this link goes.",
-                      f"scamgate:{h}", rules, worst_v.risk_score, hosts)
+                      f"scamgate:{h}:{_key(*fired)}", rules, worst_v.risk_score, hosts)
     if g.opaque_network:
-        return Result("approve", "scamgate: this call can reach the network, but scamgate can't see where it "
-                                 "goes, so it can't check it. Approve only if you know the destination.",
-                      f"scamgate:opaque:{_canon_tool(g.tool)}", ["hook.opaque_network"], 0, [])
+        what = f" ({g.opaque_detail})" if g.opaque_detail else ""
+        return Result("approve", f"scamgate: this call can reach the network, but scamgate can't see where it "
+                                 f"goes{what}, so it can't check it. Approve once, only if you know the destination.",
+                      f"scamgate:opaque:{_canon_tool(g.tool)}:{_key(g.opaque_detail, *sorted(g.urls))}",
+                      ["hook.opaque_network"], 0, hosts)
+    remote = [u for u in g.urls if not _is_local(u)]
+    if remote and not _feeds() and _feeds_policy() == "ask":
+        return Result("approve", f"scamgate: {_feed_status()} Approve once, only if you trust these links.",
+                      f"scamgate:nofeeds:{_key(*sorted(hosts))}", ["hook.no_feeds"], 0, hosts)
     return Result("none", hosts=hosts)
 
 
@@ -321,13 +467,15 @@ def handle(payload: dict) -> dict:
         if call_id:
             status = (payload.get("extra") or {}).get("status") or payload.get("status")
             if POST_EVENTS[event] == "claude":
-                outcome = "not_run" if event == "PostToolUseFailure" else "ran"
+                outcome = "ran"  # PostToolUse and PostToolUseFailure both fire after the tool ran
             else:
                 # Hermes model_tools.py: "ok" | "error" (ran, maybe failed) | "blocked" (hook or human said no)
                 outcome = "not_run" if status == "blocked" else "ran"
             asklog.record_outcome(asklog.make_key(session, call_id), outcome)
         return {}
 
+    if not event and tool:
+        event = "pre_tool_call"  # a tool call with no event name: gate it rather than wave it through
     if event not in PRE_EVENTS:
         return {}
     dialect = PRE_EVENTS[event]
@@ -347,6 +495,8 @@ def handle(payload: dict) -> dict:
     if not g.urls and not g.opaque_network:
         return {}
     r = _evaluate(g)
+    if r.decision != "none" and (warn := _feed_status()) and warn not in r.message:
+        r.message = f"{r.message} Note: {warn}"
     if r.decision != "none":
         session, call_id = _call_ids(payload)
         asklog.log_check(tool=tool, decision=r.decision, risk_score=r.score, rule_ids=r.rules,
@@ -362,9 +512,11 @@ def run(payload: dict) -> tuple[str, int]:
 def main(stdin=None, stdout=None) -> int:
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
-    raw = stdin.read()
+    raw = stdin.read(MAX_INPUT_BYTES + 1)
     payload: Any = None
     try:
+        if len(raw) > MAX_INPUT_BYTES:
+            raise ValueError(f"hook input too large (over {MAX_INPUT_BYTES // (1024 * 1024)} MB)")
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             raise ValueError("hook payload must be a JSON object")
@@ -374,7 +526,7 @@ def main(stdin=None, stdout=None) -> int:
         if event in POST_EVENTS or (event and event not in PRE_EVENTS):
             stdout.write("{}")
             return 0
-        msg = f"scamgate hook error, failing closed: {type(exc).__name__}: {exc}"
+        msg = f"scamgate hook error, failing closed: {type(exc).__name__}: {str(exc)[:200]}"
         dialect = PRE_EVENTS.get(event or "", "hermes")
         stdout.write(json.dumps(_render(dialect, Result("block", msg))))
         print(msg, file=sys.stderr)

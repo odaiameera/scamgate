@@ -116,35 +116,44 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
         <code>scamgate-hook</code> runs in the harness instead: it reads one hook event as JSON on stdin and writes a
         decision on stdout. It speaks Hermes shell hooks and Claude Code <code>PreToolUse</code>/<code>PostToolUse</code>.</p>
       <dl class="dl">
-        <dt>Links</dt><dd>Every URL in a web, browser, image/video, terminal or code tool call is checked. Deny blocks the call; ask sends it to you.</dd>
-        <dt>Unreadable destinations</dt><dd>A call that can reach the network but whose destination scamgate can't see (<code>curl "$URL"</code>) goes to you for approval.</dd>
-        <dt>Bulk</dt><dd>More than 20 links in one call goes to you for approval.</dd>
+        <dt>Links</dt><dd>Every URL in a web, browser, image/video, terminal, code or unknown MCP tool call is checked, including disguised forms (<code>evilsh%6fp.com</code>, <code>http://3405803781</code>). Deny blocks the call; ask sends it to you.</dd>
+        <dt>Hidden destinations</dt><dd>A network step scamgate can't read goes to you, judged per command, so a harmless link can't hide a second fetch: <code>curl "$URL"</code>, <code>$(…)</code>, string-built links, package installs, <code>git fetch</code>.</dd>
+        <dt>Bulk</dt><dd>Any known-bad link blocks the whole call. Otherwise more than 20 links in one call goes to you.</dd>
+        <dt>Running blind</dt><dd>With no feeds cached, links go to you (<code>SCAMGATE_NO_FEEDS=warn</code> relaxes this). Stale feeds are mentioned in every ask and block.</dd>
+        <dt>Stated reason</dt><dd>The agent's reason is scored with and without it; the higher score wins, so it can only add risk.</dd>
+        <dt>Narrow approvals</dt><dd>Approval keys include the host and the rules that fired (or a hash of the hidden command), so one “always” can't cover other destinations.</dd>
         <dt>Tampering</dt><dd>Blocks agent writes to scamgate's code, state and the hook config, and commands or code that revoke the hook, remove the server, promote rules, record payees or call scamgate's state modules.</dd>
-        <dt>Fails closed</dt><dd>Bad input or an internal error blocks the call with exit code 2.</dd>
+        <dt>Fails closed</dt><dd>Bad input, input over 2 MB, deep nesting or an internal error blocks the call with exit code 2.</dd>
         <dt>Never says allow</dt><dd>Silence means “no objection”. The hook can only tighten your agent's permissions.</dd>
       </dl>
       <h3>Hermes</h3>
 <pre class="code" data-lang="yaml"><code><span class="c"># ~/.hermes/config.yaml</span>
 <span class="k">hooks:</span>
   <span class="k">pre_tool_call:</span>
-    - <span class="k">matcher:</span> <span class="s">"browser_.*|web_extract|vision_analyze|video_analyze|terminal|execute_code|write_file|patch"</span>
+    - <span class="k">matcher:</span> <span class="s">".*"</span>   <span class="c"># non-network tools pass straight through</span>
       <span class="k">command:</span> <span class="s">"scamgate-hook"</span>
       <span class="k">timeout:</span> 15
       <span class="k">fail_closed:</span> true
   <span class="k">post_tool_call:</span>   <span class="c"># optional: records whether you approved each ask</span>
-    - <span class="k">matcher:</span> <span class="s">"browser_.*|web_extract|vision_analyze|video_analyze|terminal|execute_code"</span>
+    - <span class="k">matcher:</span> <span class="s">".*"</span>
       <span class="k">command:</span> <span class="s">"scamgate-hook"</span>
       <span class="k">timeout:</span> 15</code></pre>
       <p>Hermes asks you to approve a new hook the first time it runs in an interactive session. Check it with
-        <code>hermes hooks list</code> or <code>hermes hooks doctor</code>.</p>
+        <code>hermes hooks list</code> or <code>hermes hooks doctor</code>. You need a Hermes build whose shell hooks
+        understand <code>"action": "approve"</code>; older builds dropped it, turning every ask into a pass (issue #92553,
+        Sep 2026). <code>/yolo</code> or <code>approvals.mode: off</code> auto-approves every ask; blocks still hold.</p>
       <h3>Claude Code</h3>
+      <p>Needs Claude Code <strong>v2.1.295+</strong> for <code>onFailure</code>. Without it, a hook that crashes, times out
+        or can't start lets the tool call through.</p>
 <pre class="code" data-lang="json"><code><span class="c">// .claude/settings.json</span>
 {<span class="k">"hooks"</span>: {
-  <span class="k">"PreToolUse"</span>:  [{<span class="k">"matcher"</span>: <span class="s">"WebFetch|Bash|Write|Edit|mcp__.*browser.*"</span>,
-                   <span class="k">"hooks"</span>: [{<span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"scamgate-hook"</span>, <span class="k">"timeout"</span>: 15}]}],
-  <span class="k">"PostToolUse"</span>: [{<span class="k">"matcher"</span>: <span class="s">"WebFetch|Bash|mcp__.*browser.*"</span>,
-                   <span class="k">"hooks"</span>: [{<span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"scamgate-hook"</span>}]}]
+  <span class="k">"PreToolUse"</span>:  [{<span class="k">"matcher"</span>: <span class="s">".*"</span>,
+                   <span class="k">"hooks"</span>: [{<span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"/absolute/path/to/scamgate-hook"</span>,
+                              <span class="k">"timeout"</span>: 15, <span class="k">"onFailure"</span>: <span class="s">"block"</span>}]}],
+  <span class="k">"PostToolUse"</span>: [{<span class="k">"matcher"</span>: <span class="s">".*"</span>,
+                   <span class="k">"hooks"</span>: [{<span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"/absolute/path/to/scamgate-hook"</span>}]}]
 }}</code></pre>
+      <p>Use the absolute path (<code>uv tool dir --bin</code> shows it) so nothing earlier on <code>PATH</code> can stand in for the hook.</p>
       <div class="note"><b>Install a pinned copy</b>Run the hook from <code>uv tool install git+https://github.com/odaiameera/scamgate@&lt;commit&gt;</code>,
         not a source checkout. An installed copy checks its own files against the hashes recorded at install time on
         every call, and blocks everything if they changed. A source checkout has nothing to check against.</div>
@@ -156,8 +165,8 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
       <h2><span class="num">05</span>Ask log, review &amp; promote</h2>
       <p>Every ask and deny is logged to the state folder with redacted targets (no passwords, query values, card
         numbers, IBANs, emails or keys), the rules that fired, the score, the agent's stated reason and whether you
-        then let the call run. The stated reason is stored for you to read, marked <strong>untrusted</strong>, and
-        never used automatically: an injected page can write it.</p>
+        then let the call run. The stated reason is stored for you to read and marked <strong>untrusted</strong>: an
+        injected page can write it. In scoring it can only add risk, never remove it.</p>
 <pre class="code" data-lang="shell"><code>scamgate review --days 7                       <span class="c"># which hosts keep tripping it, and what you did</span>
 scamgate promote --host shop.example --decision deny
 scamgate promote --host shop.example --decision allow --rule url.userinfo</code></pre>
@@ -229,6 +238,7 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
           <tr><td><code>SCAMGATE_STATE_DIR</code></td><td>Ask log, overrides, payee history. Default <code>$XDG_STATE_HOME/scamgate</code>, else <code>~/.local/state/scamgate</code></td></tr>
           <tr><td><code>SCAMGATE_URLHAUS_AUTH_KEY</code></td><td>Enables the URLhaus feed</td></tr>
           <tr><td><code>SCAMGATE_PROTECT</code></td><td>Extra paths the hook should protect from agent writes (path-separator list)</td></tr>
+          <tr><td><code>SCAMGATE_NO_FEEDS</code></td><td><code>ask</code> (default): with no feeds cached, links go to you. <code>warn</code>: only mention it</td></tr>
         </tbody>
       </table>
       <p>To add a rule, write a function in <code>src/scamgate/rules/</code> decorated with

@@ -9,6 +9,7 @@ from typing import Callable
 from urllib.parse import unquote, urlsplit
 
 from scamgate.config import lst
+from scamgate.hostnorm import canon_host
 from scamgate.models import UrlCheck
 from scamgate.registry import Hit, RuleContext, register
 
@@ -38,8 +39,12 @@ def parse(url: str) -> ParsedUrl:
     raw = url.strip()
     if "://" not in raw:
         raw = "http://" + raw
-    parts = urlsplit(raw)
-    host = (parts.hostname or "").lower().rstrip(".")
+    try:
+        parts = urlsplit(raw)
+        hostname = parts.hostname or ""
+    except ValueError:
+        parts, hostname = urlsplit("http://invalid.invalid/"), ""
+    host = canon_host(hostname)
     try:
         unicode_host = host.encode("ascii").decode("idna") if "xn--" in host else host
     except UnicodeError:
@@ -203,7 +208,7 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
 def ip_host(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """Link points at a raw IP address instead of a domain name."""
     p = parse(check.url)
-    if _is_ip(p.host):
+    if _is_ip(p.host) and not ipaddress.ip_address(p.host.strip("[]")).is_loopback:
         return Hit(f"The link goes to a raw IP address ({p.host}); real shops and banks use domain names.")
     return None
 
@@ -215,18 +220,21 @@ def userinfo(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     # Only real links with an explicit scheme; 'mailto:a@b.com' or a bare email isn't a disguised URL.
     if not p.username or "://" not in check.url.strip():
         return None
-    shown = p.username if len(p.username) <= 40 else p.username[:37] + "..."
     brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
+    # Name what the link pretends to be only when it's a domain-shaped token; never echo free text,
+    # which an attacker could use to put words in front of the human ("verified safe, approve this").
+    domainish = re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9-]{1,63}){1,4}", p.username)
     looks_like_domain = "." in p.username
     names_brand = any(brand in v for brand in brands for v in normalize_variants(p.username))
     if looks_like_domain or names_brand:
+        shown = f"'{p.username}'" if domainish else "a trusted-looking name"
         return Hit(
-            f"The link shows '{shown}' before an '@', but browsers ignore everything before the '@'. "
+            f"The link shows {shown} before an '@', but browsers ignore everything before the '@'. "
             f"It actually goes to {p.host}. This is a classic way to fake a trusted address.",
             weight=int(ctx.rule_config.get("disguise_weight", 75)),
         )
     return Hit(
-        f"The link has a username ('{shown}') before the site name. Real sites almost never use this, "
+        "The link has a username before the site name. Real sites almost never use this, "
         f"and it can hide where the link really goes: {p.host}."
     )
 
@@ -274,8 +282,9 @@ def intent_mismatch(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     intent = check.intent.lower()
     cred = _contains_term(hay, lst(ctx.config, "credential_terms"))
     if cred and not any(t in intent for t in lst(ctx.config, "credential_intent_terms")):
+        task = check.intent if len(check.intent) <= 60 else check.intent[:57] + "..."
         return Hit(
-            f"The task is '{check.intent}', but the link goes to a '{cred}' page. "
+            f"The task is '{task}', but the link goes to a '{cred}' page. "
             "A credential prompt the task doesn't need is a classic phishing step."
         )
     return None

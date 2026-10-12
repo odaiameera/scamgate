@@ -32,3 +32,25 @@ def _isolated_state(tmp_path_factory, monkeypatch):
     from scamgate import hook
 
     monkeypatch.setattr(hook, "_FEEDS", None)
+
+
+@pytest.fixture
+def fresh_feeds(tmp_path, monkeypatch):
+    """A small, current feed cache (evilshop.com domain, one OpenPhish URL)."""
+    import json
+    import time
+
+    from scamgate import feeds, hook
+
+    d = tmp_path / "fresh-cache"
+    d.mkdir()
+    now = time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime())
+    (d / "meta.json").write_text(json.dumps({"phishing_database_domains": {"fetched_at": now},
+                                             "openphish": {"fetched_at": now}}))
+    (d / "phishing_database_domains.hosts.txt").write_text("evilshop.com\n")
+    (d / "phishing_database_domains.urls.txt").write_text("")
+    (d / "openphish.urls.txt").write_text("http://phish-login.net/steal\n")
+    (d / "openphish.hosts.txt").write_text("phish-login.net\n")
+    monkeypatch.setenv(feeds.ENV_CACHE_DIR, str(d))
+    monkeypatch.setattr(hook, "_FEEDS", None)
+    return d
