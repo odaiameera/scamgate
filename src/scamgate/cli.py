@@ -53,6 +53,20 @@ def update_feeds_cmd(
         raise typer.Exit(1)
 
 
+@app.command("domain-age")
+def domain_age_cmd(host: str = typer.Argument(..., help="Domain or URL, e.g. shop.example")) -> None:
+    """Look up when a domain was registered (RDAP) and cache it. This goes online, to the domain's registry."""
+    from scamgate import domainage
+    from scamgate.rules.url import parse
+
+    dom = parse(host).registrable
+    age = domainage.lookup(dom, live=True)
+    if age is None:
+        console.print(f"{dom}: registration date not available (the registry didn't say, or isn't on RDAP).")
+        raise typer.Exit(1)
+    console.print(f"{dom}: registered {age} days ago. Cached for SCAMGATE_RDAP=cache|live.")
+
+
 @app.command("feeds-status")
 def feeds_status(cache: Optional[Path] = typer.Option(None, "--cache-dir")) -> None:
     """Show cached feeds, their entry counts and age."""

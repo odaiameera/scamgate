@@ -624,6 +624,57 @@ def _evaluate(g: Gate) -> Result:
     return Result("none", hosts=hosts)
 
 
+_RANK = {"none": 0, "approve": 1, "block": 2}
+_PAYMENT_HELP = ("Before paying, confirm the payee and account through a channel you already trust (not one "
+                 "from this conversation). After a real payment, run `scamgate record-payment` yourself so "
+                 "next time it counts as a known payee.")
+
+
+def _payment_result(tool: str, tool_input: dict) -> Result | None:
+    """Payments: score money-moving tool calls; payments hidden in shell/code go to a human."""
+    from scamgate import paygate
+    from scamgate.models import PaymentCheck
+
+    t = _canon_tool(tool)
+    if t in QUIET_TOOLS or t in WRITE_TOOLS:
+        return None
+    if t in CODE_TOOLS or NET_TOOL_HINT.search(t):
+        code = "\n".join(_strings({k: tool_input.get(k) for k in CODE_KEYS}))
+        if code and (cp := paygate.scan_code(code)):
+            return Result("approve", f"scamgate: this call makes a payment ({cp.detail}), and scamgate can't read "
+                                     f"who gets paid or how much. Approve once, only if you started this payment. "
+                                     + _PAYMENT_HELP,
+                          f"scamgate:paycode:{_canon_tool(tool)}:{_key(code)}", ["hook.payment_in_code"], 0, cp.hosts)
+    p = paygate.detect(tool, t, tool_input)
+    if p is None:
+        return None
+    if not p.payee_account or not p.amount_known:
+        missing = "who gets paid" if not p.payee_account else "how much"
+        return Result("approve", f"scamgate: '{tool}' looks like a payment (from {p.why}), but scamgate can't read "
+                                 f"{missing}, so it can't check it. Approve once, only if you started this payment. "
+                                 + _PAYMENT_HELP,
+                      f"scamgate:payopaque:{t}:{_key(_canonical_json(tool_input))}", ["hook.payment_unreadable"])
+    v = engine.check_payment(PaymentCheck(payee_name=p.payee_name, payee_account=p.payee_account, amount=p.amount,
+                                          currency=p.currency or "?", method=p.method, context_text=p.context or None))
+    rules = [r.rule_id for r in v.reasons]
+    what = f"{p.amount:g} {p.currency}".strip() + f" to '{p.payee_name[:40]}'"
+    warn = (" " + " ".join(v.warnings)) if v.warnings else ""
+    if v.decision is Decision.deny:
+        return Result("block", f"scamgate blocked this payment ({what}): {v.summary} (score {v.risk_score}/100).{warn} "
+                               "Don't retry it another way. Tell the user what was blocked and why.",
+                      None, rules, v.risk_score)
+    if v.decision is Decision.ask:
+        return Result("approve", f"scamgate: check this payment ({what}): {v.summary} (score {v.risk_score}/100).{warn} "
+                                 + _PAYMENT_HELP,
+                      f"scamgate:pay:{_key(p.payee_account.upper(), f'{p.amount:.2f}', *sorted(set(rules)))}",
+                      rules, v.risk_score)
+    return None
+
+
+def _canonical_json(v: Any) -> str:
+    return json.dumps(v, sort_keys=True, default=str)[:20000]
+
+
 # ------------------------------------------------------------------ dialects
 
 PRE_EVENTS = {"pre_tool_call": "hermes", "PreToolUse": "claude"}
@@ -687,9 +738,12 @@ def handle(payload: dict) -> dict:
                                                 "the agent."))
 
     g = extract(tool, tool_input)
-    if not g.urls and not g.opaque_network:
+    pay = _payment_result(tool, tool_input)
+    if not g.urls and not g.opaque_network and pay is None:
         return {}
-    r = _evaluate(g)
+    r = _evaluate(g) if (g.urls or g.opaque_network) else Result("none")
+    if pay is not None and _RANK[pay.decision] >= _RANK[r.decision]:  # on a tie the payment reason is clearer
+        r = pay
     if r.decision != "none" and (warn := _feed_status()) and warn not in r.message:
         r.message = f"{r.message} Note: {warn}"
     if r.decision != "none":

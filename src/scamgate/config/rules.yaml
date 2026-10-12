@@ -19,7 +19,7 @@ rules:
   url.suspicious_tld:   { enabled: true,  weight: 20 }
   url.intent_mismatch:  { enabled: true,  weight: 45, secret_weight: 80 }
   url.credential_page:  { enabled: true,  weight: 25 }   # login page on an unrecognised site; waivable per host
-  url.domain_age:       { enabled: false, weight: 30, min_age_days: 30 }  # stub, needs a provider
+  url.domain_age:       { enabled: true,  weight: 30, min_age_days: 30 }  # only with SCAMGATE_RDAP=cache|live
 
   # --- Payment rules ---
   pay.new_payee_urgency:    { enabled: true, weight: 35 }
@@ -42,6 +42,60 @@ lists:
     stripe:  [stripe.com, stripe.network]
     amazon:  [amazon.com, amazon.co.uk, amazon.ie, amazon.de, amazon.fr, amazon.es, amazon.it, amazon.nl, amazonaws.com]
     apple:   [apple.com, icloud.com]
+    # Brand pack: the names most used in phishing (APWG / vendor reports), plus Irish and UK banks,
+    # couriers and services. Exact-name and typo checks only; keep names that are also everyday
+    # words out (they'd flag normal sites), or list them under brand_typo_exempt.
+    microsoft:  [microsoft.com, microsoftonline.com, live.com, outlook.com, office.com, office365.com, azure.com, xbox.com]
+    outlook:    [outlook.com, live.com, microsoft.com, office.com]
+    office365:  [office.com, office365.com, microsoft.com]
+    google:     [google.com, google.ie, google.co.uk, gmail.com, youtube.com, googleusercontent.com]
+    gmail:      [gmail.com, google.com]
+    netflix:    [netflix.com]
+    facebook:   [facebook.com, fb.com, meta.com]
+    instagram:  [instagram.com]
+    whatsapp:   [whatsapp.com, whatsapp.net]
+    linkedin:   [linkedin.com]
+    dropbox:    [dropbox.com, dropboxusercontent.com]
+    docusign:   [docusign.com, docusign.net]
+    adobe:      [adobe.com]
+    ebay:       [ebay.com, ebay.ie, ebay.co.uk]
+    coinbase:   [coinbase.com]
+    binance:    [binance.com]
+    metamask:   [metamask.io]
+    kraken:     [kraken.com]
+    dhl:        [dhl.com, dhl.ie, dhl.co.uk, dhl.de]
+    fedex:      [fedex.com]
+    anpost:     [anpost.ie, anpost.com]
+    royalmail:  [royalmail.com]
+    evri:       [evri.com]
+    usps:       [usps.com]
+    hmrc:       [hmrc.gov.uk, gov.uk]
+    ptsb:       [ptsb.ie]
+    bankofireland: [bankofireland.com, boi.com]
+    ulsterbank: [ulsterbank.ie, ulsterbank.co.uk]
+    hsbc:       [hsbc.com, hsbc.co.uk]
+    barclays:   [barclays.co.uk, barclays.com]
+    natwest:    [natwest.com]
+    santander:  [santander.co.uk, santander.com]
+    lloyds:     [lloydsbank.com, lloyds.com]
+    monzo:      [monzo.com]
+    starling:   [starlingbank.com]
+    bunq:       [bunq.com]
+    n26:        [n26.com]
+    klarna:     [klarna.com]
+    wellsfargo: [wellsfargo.com]
+    venmo:      [venmo.com]
+    cashapp:    [cash.app, cashapp.com]
+    airbnb:     [airbnb.com, airbnb.ie, airbnb.co.uk]
+    booking:    [booking.com]
+    ryanair:    [ryanair.com]
+    aerlingus:  [aerlingus.com]
+
+  # Everyday words one letter away from a brand ('finance' ~ 'binance'). The typo check skips them.
+  brand_typo_exempt: [finance, finances, kroken, broken, token, tokens, monza, months, mondo, lloyd, cashap,
+                      starting, startling, sparling, docusing, adore, adobo, netflux, ebays, fedx, bunk, bung,
+                      booking, cooking, looking, hooking, rooking, ryanairs, outlooks, metamorph, hsbcs, n25, n27,
+                      venom, venue, venus, klara, klarne]
 
   # Padding scammers put around a brand name ('appleid', 'securepaypal', 'amazonrefund').
   # A brand inside any other word ('applebees', 'revolution', 'pineapple') isn't flagged.

@@ -28,6 +28,7 @@ def _isolated_state(tmp_path_factory, monkeypatch):
 
     monkeypatch.setenv(state.ENV_STATE_DIR, str(tmp_path_factory.mktemp("state")))
     monkeypatch.delenv("SCAMGATE_PROTECT", raising=False)
+    monkeypatch.delenv("SCAMGATE_RDAP", raising=False)  # domain age never goes online in tests
     monkeypatch.delenv("HERMES_HOME", raising=False)
     from scamgate import guard, hook, overrides, payees
 

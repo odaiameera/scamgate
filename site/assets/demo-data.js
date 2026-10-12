@@ -402,8 +402,8 @@ window.SCAMGATE_DEMO = {
   {
    "id": "url.domain_age",
    "kind": "url",
-   "enabled": false,
-   "doc": "(Stub) Domain was registered very recently. Needs a domain_age_provider.",
+   "enabled": true,
+   "doc": "Domain was registered very recently (RDAP, opt-in).",
    "config": {
     "weight": 30,
     "min_age_days": 30
