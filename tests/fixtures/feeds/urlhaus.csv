@@ -1,0 +1,5 @@
+################################################################
+# abuse.ch URLhaus Database Dump (CSV - online URLs only)      #
+################################################################
+# id,dateadded,url,url_status,last_online,threat,tags,urlhaus_link,reporter
+"1","2026-10-12 07:21:10","http://203.0.113.9/bin.sh","online","2026-10-12","malware_download","None","https://urlhaus.abuse.ch/url/1/","x"

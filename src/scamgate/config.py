@@ -53,11 +53,6 @@ def load_blocklist(path: str | None = None) -> frozenset[str]:
         if p.is_file():
             domains |= _parse_domains(p.read_text("utf-8"))
             break
-    # Optional extra feeds fetched by scripts/fetch_feeds.py
-    feeds = Path(__file__).resolve().parents[2] / "data" / "feeds"
-    if not path and feeds.is_dir():
-        for f in sorted(feeds.glob("*.txt")):
-            domains |= _parse_domains(f.read_text("utf-8"))
     return frozenset(domains)
 
 

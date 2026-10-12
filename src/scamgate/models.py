@@ -41,6 +41,7 @@ class Verdict(BaseModel):
     risk_score: int = Field(ge=0, le=100)
     reasons: list[Reason] = Field(default_factory=list)
     summary: str
+    warnings: list[str] = Field(default_factory=list, description="Notes about the check itself, e.g. a stale feed cache")
     advisory: str = (
         "scamgate is advisory. It can miss scams and flag legitimate actions; "
         "a human should make the final call on anything flagged."

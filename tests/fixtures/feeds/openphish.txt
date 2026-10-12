@@ -1,0 +1,3 @@
+https://evil-login.vercel.app/secure/
+http://phish.test/paypal/signin.php?x=1
+https://cdn.discordapp.com/attachments/1/2/bad.zip

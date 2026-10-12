@@ -96,6 +96,35 @@ def blocklist(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     return None
 
 
+def _is_official_brand_host(host: str, ctx: RuleContext) -> bool:
+    brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
+    return any(_on_domain(host, d) for official in brands.values() for d in official)
+
+
+@register("url.known_bad_feed", kind="url")
+def known_bad_feed(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """URL, host or parent domain is listed in a cached known-bad-link feed (offline lookup)."""
+    if not ctx.feeds:
+        return None
+    from scamgate.feeds import FEEDS
+
+    hit = ctx.feeds.lookup(check.url)
+    if hit is None:
+        return None
+    srcs = ", ".join(FEEDS[f].title if f in FEEDS else f for f in hit.feeds)
+    if hit.kind == "url":
+        return Hit(f"This exact link is listed as phishing/malware by {srcs}.")
+    host = parse(check.url).host
+    ignore = lst(ctx.config, "feed_host_ignore")
+    if any(_on_domain(host, d) for d in ignore) or _is_official_brand_host(host, ctx):
+        return None  # shared or official host: only an exact URL listing counts
+    if hit.kind == "host":
+        return Hit(f"The host {hit.matched} is listed as phishing/malware by {srcs}.",
+                   weight=int(ctx.rule_config.get("host_weight", 75)))
+    return Hit(f"{host} sits under {hit.matched}, which is listed as phishing by {srcs}.",
+               weight=int(ctx.rule_config.get("parent_weight", 50)))
+
+
 @register("url.lookalike_brand", kind="url")
 def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """Domain imitates a well-known brand (typosquat, homoglyph, or brand name on an unrelated domain)."""

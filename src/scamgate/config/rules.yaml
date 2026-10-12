@@ -7,7 +7,11 @@ thresholds:
 
 rules:
   # --- URL rules ---
-  url.blocklist:        { enabled: true,  weight: 100 }
+  url.blocklist:        { enabled: true,  weight: 100 }   # your own list (data/blocklist.txt)
+  # Known-bad-link feeds (cached by `scamgate update-feeds`, looked up offline).
+  # exact URL listed -> deny; exact host listed -> 75 (deny on its own);
+  # parent domain listed (domain feeds only) -> 50.
+  url.known_bad_feed:   { enabled: true,  weight: 100, host_weight: 75, parent_weight: 50 }
   url.lookalike_brand:  { enabled: true,  weight: 60, exact_token_weight: 45 }
   url.ip_host:          { enabled: true,  weight: 40 }
   url.punycode:         { enabled: true,  weight: 40 }
@@ -35,6 +39,40 @@ lists:
     stripe:  [stripe.com, stripe.network]
     amazon:  [amazon.com, amazon.co.uk, amazon.ie, amazon.de, amazon.fr, amazon.es, amazon.it, amazon.nl, amazonaws.com]
     apple:   [apple.com, icloud.com]
+
+  # Big shared platforms (file hosts, form builders, shorteners, identity providers).
+  # Feeds list single bad pages on these, so a host/domain hit here is ignored; only an
+  # exact-URL listing counts. Each entry also covers its subdomains.
+  feed_host_ignore:
+    - google.com
+    - googleapis.com
+    - forms.gle
+    - goo.gl
+    - microsoftonline.com
+    - microsoft.com
+    - live.com
+    - office.com
+    - sharepoint.com
+    - 1drv.ms
+    - discordapp.com
+    - discordapp.net
+    - github.com
+    - githubusercontent.com
+    - gitlab.com
+    - bitbucket.org
+    - dropbox.com
+    - dropboxusercontent.com
+    - mediafire.com
+    - pastebin.com
+    - t.me
+    - telegra.ph
+    - bit.ly
+    - tinyurl.com
+    - t.co
+    - linktr.ee
+    - ipfs.io
+    - facebook.com
+    - linkedin.com
 
   suspicious_tlds: [zip, mov, top, xyz, click, country, gq, tk, ml, cf, ga, rest, cam, icu, sbs, cfd, shop, buzz, lol]
 

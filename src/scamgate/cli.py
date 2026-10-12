@@ -31,6 +31,44 @@ def check_url_cmd(url: str, intent: Optional[str] = typer.Option(None, help="Wha
     console.print_json(json.dumps(engine.check_url(url, intent).model_dump(mode="json")))
 
 
+@app.command("update-feeds")
+def update_feeds_cmd(
+    feed: list[str] = typer.Option(None, "--feed", "-f", help="Feed(s) to fetch; default: all default feeds"),
+    all_feeds: bool = typer.Option(False, "--all", help="Also fetch opt-in feeds (large Phishing.Database links list)"),
+    cache: Optional[Path] = typer.Option(None, "--cache-dir", help="Cache folder (default $SCAMGATE_CACHE_DIR or ~/.cache/scamgate)"),
+) -> None:
+    """Download known-bad-link feeds into the local cache. Failed feeds keep their old cache."""
+    from scamgate import feeds as feeds_mod
+
+    names = list(feed) if feed else ([*feeds_mod.FEEDS] if all_feeds else None)
+    results = feeds_mod.update_feeds(names, directory=cache)
+    table = Table(title=f"feeds -> {cache or feeds_mod.cache_dir()}")
+    for col in ("feed", "status", "urls", "hosts", "note"):
+        table.add_column(col)
+    for r in results:
+        table.add_row(r.name, "[green]ok[/green]" if r.ok else "[yellow]not updated[/yellow]",
+                      str(r.urls) if r.ok else "", str(r.hosts) if r.ok else "", r.message)
+    console.print(table)
+    if not any(r.ok for r in results):
+        raise typer.Exit(1)
+
+
+@app.command("feeds-status")
+def feeds_status(cache: Optional[Path] = typer.Option(None, "--cache-dir")) -> None:
+    """Show cached feeds, their entry counts and age."""
+    from scamgate import feeds as feeds_mod
+
+    meta = feeds_mod.read_meta(cache)
+    if not meta:
+        console.print("No feeds cached yet. Run `scamgate update-feeds`.")
+        raise typer.Exit(1)
+    idx = feeds_mod.FeedIndex(fetched_at={k: v.get("fetched_at", "") for k, v in meta.items()})
+    stale = set(idx.stale_feeds())
+    for name, m in meta.items():
+        flag = " [yellow](stale)[/yellow]" if name in stale else ""
+        console.print(f"{name}: {m.get('urls', 0)} urls, {m.get('hosts', 0)} hosts, fetched {m.get('fetched_at')}{flag}")
+
+
 @app.command()
 def bench(
     directory: Path = typer.Option(Path("scenarios"), "--dir", help="Folder of scenario YAML files"),

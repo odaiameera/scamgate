@@ -33,7 +33,8 @@ links, not just one payment network.
 
 | Rule | Fires when |
 | --- | --- |
-| `url.blocklist` | Domain or a parent domain is in `data/blocklist.txt` (or fetched feeds) |
+| `url.blocklist` | Domain or a parent domain is in your own local list, `data/blocklist.txt` (or `$SCAMGATE_BLOCKLIST`) |
+| `url.known_bad_feed` | URL is in a cached known-bad-link feed: exact URL = 100 (deny), exact host = 75, parent of a listed domain = 50. The reason names the feed |
 | `url.lookalike_brand` | Typosquat or homoglyph of a known brand (`paypa1`, `amaz0n`, `arnazon`, Cyrillic letters), or a brand name on an unofficial domain. Brands: PayPal, Revolut, AIB, Bank of Ireland, Stripe, Amazon, Apple |
 | `url.ip_host` | Link goes to a raw IP address |
 | `url.punycode` | Host uses punycode / non-ASCII characters |
@@ -148,16 +149,51 @@ real-world detection rates.
 2. Add `pay.my_rule: { enabled: true, weight: 30 }` under `rules:` in `rules.yaml`.
 3. Add tests and at least one scenario.
 
-## Blocklist feeds
+## Known-bad-link feeds
 
-`data/blocklist.txt` ships with a few made-up `.example` domains only. `scripts/fetch_feeds.py`
-is a stub for pulling community feeds (e.g. OpenPhish community feed, phishdestroy/destroylist)
-into `data/feeds/`, which is git-ignored and loaded automatically. No third-party feed data is
-bundled; check each feed's terms before use.
+scamgate checks links against free public phishing/malware feeds. **Only `scamgate update-feeds`
+touches the network.** Checks read a local cache, so they stay offline and fast. No feed data is
+committed or bundled.
+
+```bash
+uv run scamgate update-feeds            # default feeds
+uv run scamgate update-feeds --all      # also the large opt-in feeds
+uv run scamgate update-feeds -f openphish
+uv run scamgate feeds-status            # counts and fetch time per feed
+```
+
+Cache: `$SCAMGATE_CACHE_DIR`, else `$XDG_CACHE_HOME/scamgate`, else `~/.cache/scamgate`. Each feed is
+stored as its own normalized URL list and host list (so each entry keeps its source), and
+`meta.json` records the fetch time, source URL and count per feed. If a download fails, that
+feed's previous cache is kept. A running MCP server picks up a refreshed cache automatically.
+Verdicts carry a `warnings` entry when no feed is cached or a feed is older than 24 hours.
+
+| Feed | Default | What | License / terms |
+| --- | --- | --- | --- |
+| `openphish` | yes | [OpenPhish community feed](https://openphish.com/feed.txt), ~300 live phishing URLs, refreshed every 12h | [OpenPhish Terms](https://openphish.com/terms.html): **personal / non-commercial research only**, no redistribution. Commercial use needs OpenPhish's written consent (paid feed) |
+| `phishing_database_domains` | yes | [Phishing.Database](https://github.com/Phishing-Database/Phishing.Database) `phishing-domains-ACTIVE.txt`, ~390k domains | MIT, © Mitchell Krog, Nissar Chababy and contributors |
+| `phishing_database_links` | `--all` | Same project, `phishing-links-ACTIVE.txt`, ~780k URLs (~65 MB download) | MIT, as above |
+| `urlhaus` | if key set | [abuse.ch URLhaus](https://urlhaus.abuse.ch/api/) online malware-URL CSV export | Free [abuse.ch Auth-Key](https://auth.abuse.ch/) required (`export SCAMGATE_URLHAUS_AUTH_KEY=...`). Fair-use terms; commercial use may need a paid abuse.ch plan |
+
+Not used: **PhishTank** (new-user registration is disabled, so no app keys; keyless downloads are limited to a few per day and timed out in testing) and **Google Safe
+Browsing / Web Risk** (non-commercial only / paid).
+
+False positives: feeds list single bad pages on big shared platforms (Google Docs/Sites, Firebase,
+Microsoft login, Discord CDN, link shorteners). For hosts under `lists.feed_host_ignore` in
+`rules.yaml`, and for the official brand domains, only an *exact URL* listing counts.
+Parent-domain matches only come from domain feeds, so one phishing page on `x.vercel.app` never
+flags `vercel.app`.
+
+Refresh with cron (every 6 hours; OpenPhish updates every 12h, so don't poll it more often than hourly):
+
+```cron
+0 */6 * * * cd /path/to/scamgate && /usr/bin/env uv run scamgate update-feeds >> ~/.cache/scamgate/update.log 2>&1
+```
+
+`data/blocklist.txt` stays your own local list (it ships with a few made-up `.example` domains).
 
 ## Roadmap
 
-- Optional Google Web Risk / Safe Browsing lookup (opt-in, needs an API key)
 - Domain age via RDAP, behind the existing `url.domain_age` hook
 - Optional local LLM check for manipulation and prompt injection in page or message text
 - Proper Public Suffix List handling and a bigger, configurable brand list

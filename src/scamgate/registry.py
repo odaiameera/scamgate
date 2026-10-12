@@ -28,6 +28,7 @@ class RuleContext:
     config: dict[str, Any]
     rule_config: dict[str, Any]
     blocklist: frozenset[str] = field(default_factory=frozenset)
+    feeds: Any = None  # scamgate.feeds.FeedIndex | None
 
 
 RuleFn = Callable[[Any, RuleContext], "Hit | list[Hit] | None"]

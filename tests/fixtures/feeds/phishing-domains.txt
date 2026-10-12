@@ -1,0 +1,4 @@
+# comment
+bad-shop.test
+Sub.Phishy.TEST.
+not a domain
