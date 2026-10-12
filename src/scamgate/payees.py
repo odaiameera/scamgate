@@ -67,6 +67,10 @@ def _variants(word: str) -> set[str]:
     return {word} | {word[:i] + word[i + 1:] for i in range(len(word))} if len(word) >= 4 else {word}
 
 
+def _salt_id(salt: bytes) -> str:
+    return hashlib.sha256(b"scamgate-salt-id\0" + salt).hexdigest()[:16]
+
+
 def norm_account(account: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (account or "").upper())
 
@@ -109,6 +113,9 @@ def lookup(name: str, account: str) -> PayeeFacts:
     rows = _rows()
     if not rows:
         return PayeeFacts(False, False, False, False)
+    sid = _salt_id(_salt() or b"")
+    if any(r.get("salt_id") not in (None, sid) for r in rows):
+        return PayeeFacts(True, False, False, False, history_broken=True)
     nh, ah = _h("name", norm_name(name)), _h("acct", norm_account(account))
     near = {_h("core", v) for v in _variants(core_word(name))}
     exact_name = [r for r in rows if r.get("name") == nh]
@@ -128,7 +135,7 @@ def lookup(name: str, account: str) -> PayeeFacts:
 def record(name: str, account: str) -> None:
     guard.require_human("Recording a payee", interactive=lambda: _interactive())
     salt = _salt(create=True)
-    rec = guard.sign({"v": 2, "name": _h("name", norm_name(name), salt), "account": _h("acct", norm_account(account), salt),
+    rec = guard.sign({"v": 2, "salt_id": _salt_id(salt), "name": _h("name", norm_name(name), salt), "account": _h("acct", norm_account(account), salt),
                       "core": sorted(_h("core", v, salt) for v in _variants(core_word(name))),
                       "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     guard.append_private(history_path(), json.dumps(rec))

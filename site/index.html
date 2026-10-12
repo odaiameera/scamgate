@@ -111,7 +111,7 @@
         <tr><th scope="row">Who runs the check</th><td>The agent, if it remembers</td><td class="hl">The harness, before every gated tool call</td></tr>
         <tr><th scope="row">On deny</th><td>A warning the agent should respect</td><td class="hl">The call is blocked</td></tr>
         <tr><th scope="row">On ask</th><td>The agent should stop and ask you</td><td class="hl">Hermes sends it to you for approval; Claude Code prompts you</td></tr>
-        <tr><th scope="row">Destination unreadable</th><td>Not checked</td><td class="hl">You approve it, judged per command (<code>curl "$URL"</code>, string-built links, package installs)</td></tr>
+        <tr><th scope="row">Destination unreadable</th><td>Not checked</td><td class="hl">You approve it, judged per command (<code>curl "$URL"</code>, string-built or encoded links, new packages)</td></tr>
         <tr><th scope="row">On its own crash</th><td>Nothing happens</td><td class="hl">Fails closed: the call is blocked</td></tr>
         <tr><th scope="row">Tampering</th><td>Nothing stops it</td><td class="hl">Blocks edits to its files, rules and hook config, and installed copies verify their own files</td></tr>
         <tr><th scope="row">Works with</th><td>Any MCP client</td><td class="hl">Hermes shell hooks, Claude Code <code>PreToolUse</code></td></tr>

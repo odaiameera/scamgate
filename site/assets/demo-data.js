@@ -9,13 +9,18 @@ window.SCAMGATE_DEMO = {
    "input": "https://paypal.com@evil.example/login",
    "intent": null,
    "decision": "deny",
-   "score": 75,
+   "score": 100,
    "summary": "Do not proceed with this link. Main concern: The link shows 'paypal.com' before an '@', but browsers ignore everything before the '@'. It actually goes to evil.example. This is a classic way to fake a trusted address.",
    "reasons": [
     {
      "rule": "url.userinfo",
      "weight": 75,
      "text": "The link shows 'paypal.com' before an '@', but browsers ignore everything before the '@'. It actually goes to evil.example. This is a classic way to fake a trusted address."
+    },
+    {
+     "rule": "url.credential_page",
+     "weight": 25,
+     "text": "This link opens a sign-in page ('login') on evil.example, which isn't a site scamgate recognises. Only sign in if you went there on purpose."
     }
    ]
   },
@@ -30,6 +35,11 @@ window.SCAMGATE_DEMO = {
      "rule": "url.lookalike_brand",
      "weight": 80,
      "text": "'paypal.com.secure-login.xyz' starts with 'paypal.com', but the real address is secure-login.xyz. Putting a real site's name in front of another domain is a common phishing trick."
+    },
+    {
+     "rule": "url.credential_page",
+     "weight": 25,
+     "text": "This link opens a sign-in page ('login') on secure-login.xyz, which isn't a site scamgate recognises. Only sign in if you went there on purpose."
     },
     {
      "rule": "url.suspicious_tld",
@@ -94,13 +104,18 @@ window.SCAMGATE_DEMO = {
    "input": "http://203.0.113.9/aib/login",
    "intent": null,
    "decision": "ask",
-   "score": 40,
+   "score": 65,
    "summary": "Check with the human before this link. Main concern: The link goes to a raw IP address (203.0.113.9); real shops and banks use domain names.",
    "reasons": [
     {
      "rule": "url.ip_host",
      "weight": 40,
      "text": "The link goes to a raw IP address (203.0.113.9); real shops and banks use domain names."
+    },
+    {
+     "rule": "url.credential_page",
+     "weight": 25,
+     "text": "This link opens a sign-in page ('login') on 113.9, which isn't a site scamgate recognises. Only sign in if you went there on purpose."
     }
    ]
   },
@@ -209,7 +224,7 @@ window.SCAMGATE_DEMO = {
    },
    "output": {
     "action": "block",
-    "message": "scamgate blocked this: Do not proceed with this link. Main concern: The link shows 'paypal.com' before an '@', but browsers ignore everything before the '@'. It actually goes to evil.example. This is a classic way to fake a trusted address. (score 75/100, link host: evil.example). Don't retry it another way. Tell the user what was blocked and why. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Run `scamgate update-feeds`."
+    "message": "scamgate blocked this: Do not proceed with this link. Main concern: The link shows 'paypal.com' before an '@', but browsers ignore everything before the '@'. It actually goes to evil.example. This is a classic way to fake a trusted address. (score 100/100, link host: evil.example). Don't retry it another way. Tell the user what was blocked and why. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Run `scamgate update-feeds`."
    }
   },
   {
@@ -373,6 +388,15 @@ window.SCAMGATE_DEMO = {
    "config": {
     "weight": 45,
     "secret_weight": 80
+   }
+  },
+  {
+   "id": "url.credential_page",
+   "kind": "url",
+   "enabled": true,
+   "doc": "A sign-in page on a site scamgate doesn't recognise. The agent's wording can't clear this: \"log in to my account\" is exactly what a phishing page would get an agent to say.",
+   "config": {
+    "weight": 25
    }
   },
   {
