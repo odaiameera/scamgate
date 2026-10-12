@@ -12,7 +12,7 @@ calls scamgate and gets back a verdict:
 Every verdict comes with a 0–100 risk score and plain-English reasons, each tied to a rule id.
 v1 is deterministic: local rules, no LLM, no network calls.
 
-> **Status:** early scaffold (v0.1). Private repo. License TBD.
+> **Status:** early scaffold (v0.1). Private repo. MIT, see LICENSE. Feed data keeps its own terms (see Sources).
 
 ## Why
 
