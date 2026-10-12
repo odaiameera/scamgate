@@ -92,6 +92,56 @@ def test_domain_age_stub_disabled_by_default(monkeypatch):
     assert "url.domain_age" in ids(check_url("https://brand-new.example", config=cfg2))
 
 
+@pytest.mark.parametrize("url", [
+    "https://paypal.com@evil.example/login",          # domain before '@'
+    "https://www.revolut.com@pay-now.example/app",    # official host before '@'
+    "https://paypal@evil.example/",                   # brand name before '@'
+    "https://paypal.com:secret@evil.example/",        # with a password part
+])
+def test_userinfo_disguise_denied(url):
+    v = check_url(url)
+    assert "url.userinfo" in ids(v)
+    assert v.decision is Decision.deny
+    assert "evil.example" in v.reasons[0].explanation or "pay-now.example" in v.reasons[0].explanation
+
+
+def test_userinfo_plain_username_asks():
+    v = check_url("https://someone@shop.example/basket")
+    assert "url.userinfo" in ids(v)
+    assert v.decision is Decision.ask
+
+
+def test_userinfo_password_not_echoed():
+    v = check_url("https://paypal.com:hunter2@evil.example/")
+    assert all("hunter2" not in r.explanation for r in v.reasons)
+
+
+def test_userinfo_absent():
+    assert "url.userinfo" not in ids(check_url("https://www.paypal.com/signin"))
+    assert "url.userinfo" not in ids(check_url("https://example.com/contact?email=a@b.com"))
+    assert "url.userinfo" not in ids(check_url("https://example.com/?r=paypal.com@x"))
+    # Not links with a disguised host: email addresses and mailto
+    assert "url.userinfo" not in ids(check_url("mailto:someone@example.com"))
+    assert "url.userinfo" not in ids(check_url("someone@example.com"))
+
+
+@pytest.mark.parametrize("url", [
+    "https://paypal.com.secure-login.xyz/verify",
+    "https://apple.com.ie-support.net",
+    "https://www.amazon.co.uk.deals-today.example/cart",
+    "https://login.aib.ie.account-check.example/",
+])
+def test_official_domain_used_as_prefix_denied(url):
+    v = check_url(url)
+    assert "url.lookalike_brand" in ids(v)
+    assert v.decision is Decision.deny
+
+
+def test_official_domain_prefix_does_not_fire_on_official_hosts():
+    for url in ["https://www.paypal.com", "https://shop.amazon.co.uk/x", "https://support.apple.com/ie"]:
+        assert "url.lookalike_brand" not in ids(check_url(url))
+
+
 def test_legit_url_allowed():
     v = check_url("https://www.booking.com/hotel/ie/x.html", intent="book a hotel")
     assert v.decision is Decision.allow and v.risk_score == 0

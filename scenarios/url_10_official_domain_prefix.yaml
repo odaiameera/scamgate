@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: Real bank domain used as a prefix on another domain
+kind: url
+label: scam
+expected: deny
+input:
+  url: https://aib.ie.secure-check.example/account
+  intent: check a delivery update

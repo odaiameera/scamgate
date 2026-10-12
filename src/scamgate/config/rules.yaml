@@ -12,7 +12,8 @@ rules:
   # exact URL listed -> deny; exact host listed -> 75 (deny on its own);
   # parent domain listed (domain feeds only) -> 50.
   url.known_bad_feed:   { enabled: true,  weight: 100, host_weight: 75, parent_weight: 50 }
-  url.lookalike_brand:  { enabled: true,  weight: 60, exact_token_weight: 45 }
+  url.lookalike_brand:  { enabled: true,  weight: 60, exact_token_weight: 45, official_prefix_weight: 80 }
+  url.userinfo:         { enabled: true,  weight: 40, disguise_weight: 75 }  # 'paypal.com@evil.example'
   url.ip_host:          { enabled: true,  weight: 40 }
   url.punycode:         { enabled: true,  weight: 40 }
   url.suspicious_tld:   { enabled: true,  weight: 20 }

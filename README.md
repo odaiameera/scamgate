@@ -18,8 +18,10 @@ check, runs locally as an MCP server, and makes no network calls while checking.
 - The agent gets the decision, the score, every reason, and any warnings (for example a stale feed cache).
 
 **Link rules:** known-bad-link feeds, your own blocklist, brand look-alikes (typosquats,
-homoglyphs, brand names on unofficial domains), raw IP hosts, punycode, cheap abused TLDs, and
-pages asking for a seed phrase or a login the task doesn't need.
+homoglyphs, brand names on unofficial domains, real domains used as a prefix like
+`paypal.com.secure-login.xyz`), addresses hidden before an `@` (`paypal.com@evil.example`), raw
+IP hosts, punycode, cheap abused TLDs, and pages asking for a seed phrase or a login the task
+doesn't need.
 
 **Payment rules:** new payee plus urgency, changed bank details, irreversible methods (crypto,
 gift cards, transfer to a new payee), sellers insisting on a method, over budget, pressure or
@@ -186,19 +188,19 @@ give it an entry under `rules:` in `rules.yaml`, and add tests and a scenario.
 
 ## Bench and tests
 
-[`scenarios/`](scenarios/) holds 17 hand-written **example** cases (11 scam, 6 legit), each with
+[`scenarios/`](scenarios/) holds 19 hand-written **example** cases (13 scam, 6 legit), each with
 an expected decision.
 
 ```console
 $ uv run scamgate bench
 ...
-Scams: 11  caught: 11  missed: 0
+Scams: 13  caught: 13  missed: 0
 Legit: 6  false positives: 0
-Exact decision match: 17/17
+Exact decision match: 19/19
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (49 passing). They use fixtures and never touch the network.
+runs the unit tests (61 passing). They use fixtures and never touch the network.
 
 ## Limits
 
