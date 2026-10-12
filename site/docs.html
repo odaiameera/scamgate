@@ -117,12 +117,13 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
         decision on stdout. It speaks Hermes shell hooks and Claude Code <code>PreToolUse</code>/<code>PostToolUse</code>.</p>
       <dl class="dl">
         <dt>Links</dt><dd>Every URL in a web, browser, image/video, terminal, code or unknown MCP tool call is checked, including disguised forms (<code>evilsh%6fp.com</code>, <code>http://3405803781</code>). Deny blocks the call; ask sends it to you.</dd>
-        <dt>Hidden destinations</dt><dd>A network step scamgate can't read goes to you, judged per command, so a harmless link can't hide a second fetch: <code>curl "$URL"</code>, <code>$(…)</code>, string-built links, package installs, <code>git fetch</code>.</dd>
+        <dt>Hidden destinations</dt><dd>A network step scamgate can't read goes to you, judged per command, so a harmless link can't hide a second fetch: <code>curl "$URL"</code>, <code>$(…)</code>, string-built, base64/hex-decoded or reversed links, installs of named packages, <code>git clone</code>, new git remotes. In code, only a literal URL counts as readable.</dd>
+        <dt>Quiet dev work</dt><dd>Installs from a lockfile, manifest or local path (<code>pip install -r requirements.txt</code>, <code>uv sync</code>, <code>npm ci</code>), <code>git push/pull/fetch</code> to remotes you already have, and commands that only read text pass silently. Any URL in them is still checked.</dd>
         <dt>Bulk</dt><dd>Any known-bad link blocks the whole call. Otherwise more than 20 links in one call goes to you.</dd>
         <dt>Running blind</dt><dd>With no feeds cached, links go to you (<code>SCAMGATE_NO_FEEDS=warn</code> relaxes this). Stale feeds are mentioned in every ask and block.</dd>
         <dt>Stated reason</dt><dd>The agent's reason is scored with and without it; the higher score wins, so it can only add risk.</dd>
         <dt>Narrow approvals</dt><dd>Approval keys include the host and the rules that fired (or a hash of the hidden command), so one “always” can't cover other destinations.</dd>
-        <dt>Tampering</dt><dd>Blocks agent writes to scamgate's code, state, feed cache and virtualenv (a planted <code>.pth</code>
+        <dt>Tampering</dt><dd>Blocks agent writes (editors like vim/ed/nano, <code>find -exec</code>, <code>rsync</code>, <code>patch</code> included) to scamgate's code, state, feed cache and virtualenv (a planted <code>.pth</code>
           file also fails the integrity check), to <code>~/.claude</code> and project <code>.claude/settings*.json</code>, and to the
           Hermes config, however the path is spelled (<code>~</code>, <code>$HOME</code>, globs, <code>cd</code> + relative). Also blocks
           commands or code that revoke the hook, remove the server, promote rules, record payees or reach scamgate's state APIs.</dd>

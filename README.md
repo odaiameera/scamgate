@@ -147,12 +147,17 @@ It speaks Hermes shell hooks and Claude Code `PreToolUse` hooks.
   checked, including disguised forms (`evilsh%6fp.com`, `http://3405803781`). `deny` blocks the
   call, `ask` sends it to you for approval. One bad link in a batch blocks the whole batch.
 - **Hidden destinations:** a network step scamgate can't read goes to you, judged per command
-  (`curl https://example.org; curl "$URL"` still asks): variables, `$(…)`, string-built links,
-  `requests.get(open(…).read())`, package installs, `git fetch`.
+  (`curl https://example.org; curl "$URL"` still asks): variables, `$(…)`, string-built,
+  base64/hex-decoded or reversed links, `requests.get(open(…).read())`, installs of named
+  packages, `git clone`, new git remotes. In code, only a literal URL counts as readable.
+- **Routine dev work stays quiet:** installs from a lockfile, manifest or local path
+  (`pip install -r requirements.txt`, `uv sync`, `npm ci`), `git push/pull/fetch` to remotes you
+  already have, and commands that only read text (`grep requests.get src/`). Any URL in them is
+  still checked.
 - **Running blind:** with no feeds cached, links go to you for approval (`SCAMGATE_NO_FEEDS=warn`
   turns that into a warning). Stale feeds are mentioned in every ask and block.
-- **Tampering:** blocks agent writes to scamgate's own code, state and feed cache and to the hook
-  config, plus commands or code that revoke the hook, remove the server, promote rules, record
+- **Tampering:** blocks agent writes (including editors like vim/ed/nano and `find -exec`,
+  `rsync`, `patch`) to scamgate's own code, state and feed cache and to the hook config, plus commands or code that revoke the hook, remove the server, promote rules, record
   payees or call scamgate's state APIs directly.
 - **The agent's stated reason can only add risk.** It's scored with and without the reason, and
   the higher score wins.
@@ -319,7 +324,7 @@ Exact decision match: 19/19
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (278 passing). They use fixtures and never touch the network.
+runs the unit tests (376 passing). They use fixtures and never touch the network.
 
 ## Limits
 

@@ -279,15 +279,34 @@ def intent_mismatch(check: UrlCheck, ctx: RuleContext) -> Hit | None:
         )
     if not check.intent:
         return None
-    intent = check.intent.lower()
     cred = _contains_term(hay, lst(ctx.config, "credential_terms"))
-    if cred and not any(t in intent for t in lst(ctx.config, "credential_intent_terms")):
+    if cred and not _intent_expects_credentials(check.intent, ctx):
         task = check.intent if len(check.intent) <= 60 else check.intent[:57] + "..."
         return Hit(
             f"The task is '{task}', but the link goes to a '{cred}' page. "
             "A credential prompt the task doesn't need is a classic phishing step."
         )
     return None
+
+
+def _intent_expects_credentials(intent: str | None, ctx: RuleContext) -> bool:
+    i = (intent or "").lower()
+    return any(t in i for t in lst(ctx.config, "credential_intent_terms"))
+
+
+@register("url.credential_page", kind="url")
+def credential_page(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """A sign-in page on a site scamgate doesn't recognise. The agent's wording can't clear this:
+    "log in to my account" is exactly what a phishing page would get an agent to say."""
+    p = parse(check.url)
+    hay = (p.host + " " + p.path_query).replace("_", "-")
+    cred = _contains_term(hay, lst(ctx.config, "credential_terms"))
+    if not cred or _is_official_brand_host(p.host, ctx):
+        return None
+    if check.intent and not _intent_expects_credentials(check.intent, ctx):
+        return None  # url.intent_mismatch covers it, with a higher weight
+    return Hit(f"This link opens a sign-in page ('{cred}') on {p.registrable}, which isn't a site scamgate "
+               "recognises. Only sign in if you went there on purpose.")
 
 
 # Optional domain-age hook. Disabled by default. Set a provider to enable it, e.g. an

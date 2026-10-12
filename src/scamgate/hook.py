@@ -73,27 +73,33 @@ _DYNAMIC_URL_RE = re.compile(
           | [^\s/'"`]*['"`]\s*(?:\+|\.\s|['"])  # 'https://evil'+'shop', "https://evil""shop"
           | ['"`] )""")
 _NET_RE = re.compile(
-    r"(?i)(?:(?<![\w.-])(?:curl|wget|aria2c|httpie|http|nc|ncat|telnet|ssh|scp|sftp|rsync|ftp|tftp|socat|"
+    r"(?i)(?:(?<![\w.-])(?:curl|wget|aria2c|httpie|http|nc|ncat|telnet|ssh|sftp|ftp|tftp|socat|gnutls-cli|"
+    r"test-netconnection|tnc|"
     r"nslookup|dig|host|ping|traceroute|"
     r"invoke-webrequest|invoke-restmethod|iwr|irm|start-bitstransfer|start-process|certutil|bitsadmin|"
     r"xdg-open|open|start|explorer|"
     r"pipx|uvx|npx|bunx)(?![\w.-])|"
+    r"(?<![\w.-])(?:rsync|scp)\b[^\n;|&]*\s[\w.@-]+:(?![/\\])|"     # only with a host:path argument
+    r"\bopenssl\s+s_client\b|"
     # Package managers: only the subcommands that download something.
     r"(?<![\w.-])(?:pip3?|poetry|conda|npm|yarn|pnpm|bun|deno|gem|cargo|go|brew|winget|choco|scoop|apt|apt-get|"
     r"docker|podman|helm)\s+(?:install|i|add|ci|update|upgrade|fetch|get|pull|download|publish|push|dlx|"
     r"create|search|source|run\s+https?)\b|"
     r"(?<![\w.-])(?:yarn|pnpm|bun)(?:\s*$|\s+--)|"           # bare 'yarn' / 'pnpm' installs
     r"(?<![\w.-])kubectl\s+(?:apply|create)\s+-f\s+https?|"
-    r"\bgit\s+(?:clone|fetch|pull|push|submodule|ls-remote|remote\s+add)\b|"
-    r"\buv\s+(?:pip|add|tool|sync|run\s+--with)\b|"
+    # git fetch/pull/push go to remotes already configured (adding one with a URL is checked).
+    r"\bgit\s+(?:clone|ls-remote|remote\s+(?:add|set-url)|submodule\s+add)\b|"
+    r"\buv\s+(?:pip\s+install|add|tool\s+(?:install|run)|run\s+--with)\b|"
     r"requests\.|httpx\.|urllib|urlopen|aiohttp|socket\.|http\.client|ftplib|smtplib|"
     r"\bfetch\(|xmlhttprequest|websocket|navigator\.sendbeacon|"
     r"new_tab\(|goto_url\(|goto\(|navigate\(|page\.goto|window\.open|location\.(?:href|assign|replace)|"
     r"web_search\(|web_extract\(|webbrowser\.open|net\.webclient|downloadstring|downloadfile)"
 )
 # Signs a network step's destination is hidden in a variable, a file, a subshell or stdin.
-_INDIRECT_RE = re.compile(r"""(?x)\$\{?\w|\$\(|`|<\(|%\w+%|\bopen\(|\.read\(\)|\bxargs\b|
-                              \s-K\s|--config\b|\s-i\s|--input-file""")
+_INDIRECT_RE = re.compile(r"""(?ix)\$\{?\w|\$\(|`|<\(|%\w+%|\bopen\(|\.read\(\)|\bxargs\b|
+                              \s-K\s|--config\b|\s-i\s|--input-file|
+                              b64decode|b32decode|a85decode|fromhex|unhexlify|codecs\.|atob\(|fromcharcode|
+                              \[::-1\]|['"]\.join\(|\bchr\(|rot13|reverse\(\)|\bbase64\s+-d|\bxxd\s+-r""")
 _SEGMENT_SPLIT = re.compile(r"\n|;|&&|\|\||\|")
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 _TAMPER_CMD = re.compile(
@@ -113,6 +119,8 @@ _TAMPER_CMD = re.compile(
 _SHELL_WRITE = re.compile(
     r"(?i)(\brm\b|\bdel\b|\berase\b|\bmv\b|\bmove\b|\bcp\b|\bcopy\b|\btruncate\b|\bsed\s+-i|\btee\b|"
     r"\bln\b|\binstall\s+-|\bchmod\b|\bchown\b|\bperl\s+-[a-z]*i|\bdd\b|write_text|write_bytes|\.write\(|"
+    r"\b(?:vim?|nvim|ed|ex|emacs|nano|pico|micro|joe|notepad(?:\+\+)?|code|subl|gedit|kate|rsync|patch)\b|"
+    r"\s-exec\b|\s-execdir\b|\s-delete\b|"
     r">>?|remove-item|set-content|add-content|out-file|clear-content|rename-item|\.write_text|"
     r"\.unlink|shutil\.|os\.remove|open\([^)]*['\"][wa])"
 )
@@ -191,7 +199,9 @@ _TAIL_RE = re.compile(r"""(?ix)
   | shell-hooks-allowlist
   | ['"]\.claude['"]\s*[)/]\s*(?:/\s*)?['"]settings
   | \bcd\s+\S*\.claude\b[^\n]*\bsettings
-  | \bcd\s+\S*hermes\b[^\n]*\bconfig\.ya?ml""")
+  | \bcd\s+\S*hermes\b[^\n]*\bconfig\.ya?ml
+  | \.claude\b[^\n]{0,80}\bsettings
+  | \bsettings[\w.*'"]*[^\n]{0,80}\.claude\b""")
 
 
 def _expand(text: str) -> str:
@@ -272,14 +282,101 @@ def _looks_like_bare_host(s: str) -> bool:
     return bool(s) and " " not in s and "." in s and not s.startswith(("/", ".", "~")) and bool(_BARE_HOST.match(s))
 
 
+# Common generic TLDs. Any two-letter label also counts (country codes), except ones that are
+# far more often code: user.id, re.search's "re", file.py, os.path's "os"...
+_GTLDS = set("""com net org edu gov mil int info biz name pro io co ai app dev me tv cc xyz top site online shop
+store tech cloud live link click page blog news club space website fun icu buzz lol cam sbs cfd rest bar mobi asia
+tel travel jobs email digital agency solutions services support network systems software security finance bank
+money pay credit loan tickets events zip mov ink one world today life plus host global wiki chat social art design
+studio media gg network center group company business market exchange trade tokyo london dublin irish""".split())
+_CODE_2 = {"id", "re", "py", "js", "ts", "sh", "md", "rs", "pl", "os", "np", "pd", "tf", "db", "fs", "el", "go",
+           "rb", "cs", "pm", "ps", "mk", "am", "in", "is", "it", "to", "at", "as", "do", "no", "on", "or", "so", "up"}
+_IMPORT_BEFORE = re.compile(r"(?:\bimport|\bfrom)\s+[\w., ]*$|\bas\s+$|\brequire\(\s*['\"]$")
+
+
+def _plausible_host(host: str) -> bool:
+    labels = host.lower().split(".")
+    tld = labels[-1]
+    if len(labels) < 2 or not all(labels):
+        return False
+    return tld in _GTLDS or (len(tld) == 2 and tld.isalpha() and tld not in _CODE_2)
+
+
 def _bare_hosts(segment: str) -> list[str]:
     out = []
-    for tok in _HOST_TOKEN.findall(segment):
+    for m in _HOST_TOKEN.finditer(segment):
+        tok = m.group(1)
         host = tok.split("/", 1)[0].split(":", 1)[0]
-        if _NOT_A_HOST.search(host) or host.lower().split(".")[-1] in {"get", "post", "run", "main"}:
+        after = segment[m.end():m.end() + 1]
+        if (_NOT_A_HOST.search(host) or not _plausible_host(host) or after in ("(", "[", "=")
+                or _IMPORT_BEFORE.search(segment[max(0, m.start() - 60):m.start()])):
             continue
-        out.append(tok)
+        out.append("https://" + tok)
     return out
+
+
+_CODE_LIKE = re.compile(r"[A-Za-z_][\w.]*\(")
+_PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editable", "-i", "--index-url",
+                    "--extra-index-url", "-f", "--find-links", "-t", "--target", "--prefix", "--python", "-p",
+                    "--root", "--platform", "--python-version", "--implementation", "--abi", "--only-binary",
+                    "--no-binary", "--progress-bar", "--log", "--cache-dir", "--src", "--upgrade-strategy"}
+_PATHISH = re.compile(r"^(?:[.~/\\]|[a-zA-Z]:[/\\])|[/\\]|\.(?:whl|tar\.gz|zip|txt|in|toml|lock|cfg)$")
+_LOCAL_ONLY = re.compile(r"""(?ix)^(?:sudo\s+)?(?:
+    uv\s+(?:sync|lock)\b | poetry\s+(?:install|lock)\b | bundle(?:\s+install)?\b | cargo\s+(?:build|fetch|test|check)\b |
+    go\s+mod\s+(?:download|tidy|vendor)\b | go\s+(?:build|test)\b | composer\s+install\b | pipenv\s+(?:install|sync)\s*$ |
+    pipenv\s+sync\b)""")
+
+
+# Commands that only read or print text: "grep requests.get" or "echo curl" mention the network, they
+# don't use it. Pipes and ; already split segments, so "grep x | curl ..." is judged per part.
+_TEXT_ONLY = re.compile(r"(?i)^(?:grep|egrep|fgrep|rg|ag|ack|cat|bat|head|tail|less|more|wc|sort|uniq|cut|ls|dir|"
+                        r"echo|printf|type|file|stat|sed\s+-n|awk\s+'[^']*'\s+[\w./-]+$|"
+                        r"git\s+(?:log|grep|diff|show|status|blame))\b")
+_SUBST = re.compile(r"\$\(|`|<\(|>\(")
+
+
+def _local_install(seg: str) -> bool:
+    """Installs from a lockfile, manifest or local path: the destination is the configured registry and
+    the packages are already declared in the repo, so there's nothing new for a human to judge."""
+    import shlex
+
+    if _LOCAL_ONLY.search(seg):
+        return True
+    try:
+        toks = shlex.split(seg, posix=True)
+    except ValueError:
+        return False
+    while toks and toks[0] in ("sudo", "python", "python3", "py", "-m"):
+        toks = toks[1:]
+    if not toks:
+        return False
+    tool = toks[0].lower()
+    if tool == "uv" and len(toks) > 1 and toks[1] == "pip":
+        tool, toks = "pip", toks[1:]
+    args = toks[1:]
+    if tool in ("pip", "pip3"):
+        if not args or args[0] not in ("install", "sync"):
+            return False
+        it = iter(args[1:])
+        for a in it:
+            if a in _PIP_VALUE_FLAGS:
+                v = next(it, "")
+                if a in ("-r", "--requirement", "-c", "--constraint", "-e", "--editable") and "://" not in v \
+                        and not _PATHISH.search(v):
+                    return False
+                continue
+            if a.startswith("-"):
+                continue
+            if "://" in a or not _PATHISH.search(a):
+                return False  # a named package (or a URL, which is checked on its own)
+        return True
+    if tool in ("npm", "pnpm", "yarn", "bun"):
+        if not args:
+            return tool == "yarn"
+        if args[0] not in ("install", "i", "ci"):
+            return False
+        return all(a.startswith("-") for a in args[1:])
+    return False
 
 
 def _is_local(url: str) -> bool:
@@ -300,12 +397,16 @@ def _scan_code(code: str, g: Gate) -> None:
     for seg in _segments(code):
         if seg.lstrip().startswith(("#", "//")) or not _NET_RE.search(seg):
             continue
+        if _local_install(seg) or (_TEXT_ONLY.match(seg) and not _SUBST.search(seg)):
+            continue
         seg_urls = _URL_RE.findall(seg)
         bare = _bare_hosts(seg) if not seg_urls else []
         g.urls += bare
         indirect = bool(_INDIRECT_RE.search(seg))
-        if (seg_urls or bare) and not indirect:
+        if seg_urls and not indirect:
             continue
+        if bare and not indirect and not _CODE_LIKE.search(seg):
+            continue  # a shell command naming its host; in code, only a literal URL counts as readable
         if is_program and has_literal and not indirect:
             continue  # url = "https://..." on one line, requests.get(url) on the next
         g.opaque(f"'{seg[:60]}'")

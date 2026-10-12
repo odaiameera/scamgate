@@ -18,6 +18,7 @@ rules:
   url.punycode:         { enabled: true,  weight: 40 }
   url.suspicious_tld:   { enabled: true,  weight: 20 }
   url.intent_mismatch:  { enabled: true,  weight: 45, secret_weight: 80 }
+  url.credential_page:  { enabled: true,  weight: 25 }   # login page on an unrecognised site; waivable per host
   url.domain_age:       { enabled: false, weight: 30, min_age_days: 30 }  # stub, needs a provider
 
   # --- Payment rules ---
