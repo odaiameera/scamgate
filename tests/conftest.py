@@ -29,9 +29,15 @@ def _isolated_state(tmp_path_factory, monkeypatch):
     monkeypatch.setenv(state.ENV_STATE_DIR, str(tmp_path_factory.mktemp("state")))
     monkeypatch.delenv("SCAMGATE_PROTECT", raising=False)
     monkeypatch.delenv("HERMES_HOME", raising=False)
-    from scamgate import hook
+    from scamgate import guard, hook, overrides, payees
 
     monkeypatch.setattr(hook, "_FEEDS", None)
+    # Tests act as the human at a terminal unless they say otherwise (the suite itself may run
+    # inside an agent, or in CI without a TTY).
+    for m in guard.AGENT_ENV_MARKERS:
+        monkeypatch.delenv(m, raising=False)
+    monkeypatch.setattr(overrides, "_interactive", lambda: True)
+    monkeypatch.setattr(payees, "_interactive", lambda: True)
 
 
 @pytest.fixture

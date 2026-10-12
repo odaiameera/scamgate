@@ -59,7 +59,7 @@ def log_check(*, tool: str, decision: str, risk_score: int, rule_ids: list[str],
         "rules": sorted(set(rule_ids)),
         "hosts": sorted(set(hosts)),
         "targets": [redact_url(t) for t in targets[:5]],
-        "stated_reason": redact_text(stated_reason or ""),
+        "stated_reason": redact_text(stated_reason or "", limit=80),
         "stated_reason_trust": "untrusted",
     })
     if decision in ("approve", "ask"):

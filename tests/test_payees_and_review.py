@@ -105,8 +105,16 @@ def test_allow_override_only_waives_that_rule_on_that_exact_host():
     assert engine.check_url("https://someone@pay.shop.example/").decision is not Decision.allow
 
 
+def _signed_line(**rec):
+    from scamgate import guard
+
+    guard.append_private(overrides.overrides_path(), json.dumps(guard.sign(rec)))
+
+
 def test_allow_override_never_waives_feed_or_blocklist_hits():
-    overrides.add("crypto-doubler.example", "allow", rule="url.blocklist")
+    with pytest.raises(ValueError):
+        overrides.add("crypto-doubler.example", "allow", rule="url.blocklist")
+    _signed_line(host="crypto-doubler.example", decision="allow", rule="url.blocklist")  # even if one existed
     assert engine.check_url("https://crypto-doubler.example/").decision is Decision.deny
 
 
@@ -131,5 +139,7 @@ def test_promote_rejects_wildcards_and_non_hosts(bad):
 
 def test_allow_override_cannot_waive_your_own_deny():
     overrides.add("shop.example", "deny")
-    overrides.add("shop.example", "allow", rule="url.override")
+    with pytest.raises(ValueError):
+        overrides.add("shop.example", "allow", rule="url.override")
+    _signed_line(host="shop.example", decision="allow", rule="url.override")
     assert engine.check_url("https://shop.example/").decision is Decision.deny

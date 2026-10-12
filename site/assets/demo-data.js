@@ -453,6 +453,15 @@ window.SCAMGATE_DEMO = {
      "match": 0
     }
    }
+  },
+  {
+   "id": "pay.unbacked_known_claim",
+   "kind": "payment",
+   "enabled": true,
+   "doc": "The agent said this is a known payee, but there's no record of paying them.",
+   "config": {
+    "weight": 15
+   }
   }
  ]
 };

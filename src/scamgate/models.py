@@ -63,6 +63,10 @@ class PaymentCheck(BaseModel):
         default=None, description="Messages or page text that led to this payment"
     )
     is_new_payee: bool | None = None
+    agent_claim_unbacked: bool = Field(
+        default=False, exclude=True,
+        description="Set by scamgate, not the caller: the agent called a payee known with no record of it",
+    )
     bank_details_changed: bool | None = None
     budget: float | None = None
     vop_result: VopResult | None = None

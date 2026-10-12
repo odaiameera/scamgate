@@ -27,6 +27,7 @@ rules:
   pay.method_restricted:    { enabled: true, weight: 30 }
   pay.over_budget:          { enabled: true, weight: 30 }
   pay.pressure_phrases:     { enabled: true, weight: 35 }
+  pay.unbacked_known_claim: { enabled: true, weight: 15 }
   pay.vop_mismatch:
     enabled: true
     weights: { no_match: 60, close_match: 25, unavailable: 10, match: 0 }

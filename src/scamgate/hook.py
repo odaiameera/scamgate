@@ -99,15 +99,20 @@ _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 _TAMPER_CMD = re.compile(
     r"(?i)(hermes\s+(?:hooks\s+(?:revoke|rm|remove)|mcp\s+(?:rm|remove)|plugins\s+(?:disable|remove)|"
     r"config\s+set\s+(?:hooks\b|hooks_auto_accept|mcp_servers))|"
-    r"scamgate\s+(?:promote|record-payment)|"
-    r"scamgate\.(?:overrides|payees|asklog|state)\b|"
-    r"from\s+scamgate\s+import\s+[^\n;]*\b(?:overrides|payees|asklog|state)\b|"
+    r"(?:scamgate|-m\s+scamgate(?:\.cli)?)\W{0,3}\s+\W{0,2}(?:promote|record-payment)\b|"
+    r"\b(?:promote|record-payment)\b[^\n]*\s--(?:host|payee|account|decision)\b|"
+    r"scamgate\.(?:overrides|payees|asklog|state|guard)\b|"
+    r"(?:over['\"]?\s*\+\s*['\"]?rides|pay['\"]?\s*\+\s*['\"]?ees)|"
+    r"__import__\(\s*['\"]scamgate|importlib[^\n]*scamgate|"
+    r"from\s+scamgate\s+import\s+[^\n;]*\b(?:overrides|payees|asklog|state|guard)\b|"
+    r"disableAllHooks|"
     r"(?:uv\s+tool|pipx|pip3?|uv\s+pip)\s+uninstall\s+(?:-y\s+)?scamgate|"
     r"claude\s+mcp\s+remove\s+scamgate|"
     r"--accept-hooks|HERMES_ACCEPT_HOOKS)"
 )
 _SHELL_WRITE = re.compile(
     r"(?i)(\brm\b|\bdel\b|\berase\b|\bmv\b|\bmove\b|\bcp\b|\bcopy\b|\btruncate\b|\bsed\s+-i|\btee\b|"
+    r"\bln\b|\binstall\s+-|\bchmod\b|\bchown\b|\bperl\s+-[a-z]*i|\bdd\b|write_text|write_bytes|\.write\(|"
     r">>?|remove-item|set-content|add-content|out-file|clear-content|rename-item|\.write_text|"
     r"\.unlink|shutil\.|os\.remove|open\([^)]*['\"][wa])"
 )
@@ -141,6 +146,14 @@ def protected_roots() -> list[str]:
     roots: list[str] = []
     pkg = Path(__file__).resolve().parent
     roots.append(str(pkg))
+    # The virtualenv scamgate runs from (uv tool / pipx installs are venvs): its site-packages, where a
+    # new .pth file would run code at every start, and its entry scripts. A system-wide install is
+    # not covered: protecting /usr would block too much.
+    if sys.prefix != sys.base_prefix:
+        import sysconfig
+
+        paths = sysconfig.get_paths()
+        roots += [paths["purelib"], paths["scripts"]]
     roots.append(str(state_dir()))
     roots.append(str(cache_dir()))
     if env := os.environ.get("SCAMGATE_CONFIG"):
@@ -165,14 +178,50 @@ def _is_protected(path: str, roots: list[str]) -> str | None:
     return None
 
 
+# Path endings that are always protected, however the path is spelled (~, $HOME, globs, cd + relative).
+_PROTECTED_TAILS = (
+    (".claude/settings.json", ".claude/settings"), (".claude/settings.local.json", ".claude/settings"),
+    (".claude/hooks", ".claude/hooks"), (".hermes/config.yaml", ".hermes/config"),
+    ("hermes/config.yaml", "hermes/config"), ("shell-hooks-allowlist.json", "shell-hooks-allowlist"),
+    ("hermes/agent-hooks", "hermes/agent-hooks"), ("hermes/plugins", "hermes/plugins"),
+)
+_TAIL_RE = re.compile(r"""(?ix)
+    (?:\.claude|\.cl\*|\.c\*)[/\\]+(?:settings[\w.*]*|sett\*[\w.*]*|hooks)\b
+  | \bhermes[/\\]+(?:config\.ya?ml|agent-hooks|plugins|hooks)\b
+  | shell-hooks-allowlist
+  | ['"]\.claude['"]\s*[)/]\s*(?:/\s*)?['"]settings
+  | \bcd\s+\S*\.claude\b[^\n]*\bsettings
+  | \bcd\s+\S*hermes\b[^\n]*\bconfig\.ya?ml""")
+
+
+def _expand(text: str) -> str:
+    t = text.replace("\\", "/")
+    home = str(Path.home()).replace("\\", "/")
+    t = re.sub(r"(?<![\w/])~(?=/|\b)", home, t)
+    t = re.sub(r"\$\{?(?:HOME|USERPROFILE)\}?|\$env:(?:USERPROFILE|HOME)|%USERPROFILE%", home, t, flags=re.I)
+    if hh := os.environ.get("HERMES_HOME"):
+        t = re.sub(r"\$\{?HERMES_HOME\}?|\$env:HERMES_HOME|%HERMES_HOME%", hh.replace("\\", "/"), t, flags=re.I)
+    if la := os.environ.get("LOCALAPPDATA"):
+        t = re.sub(r"\$\{?LOCALAPPDATA\}?|\$env:LOCALAPPDATA|%LOCALAPPDATA%", la.replace("\\", "/"), t, flags=re.I)
+    return t
+
+
 def _mentions_protected(text: str, roots: list[str]) -> str | None:
-    norm = text.replace("\\", "/").lower()
+    norm = _expand(text).lower()
     norm = re.sub(r"(?<![a-z])/([a-z])/", lambda m: f"{m.group(1)}:/", norm)
     for r in roots:
         tail = r.split(":/", 1)[-1] if ":/" in r else r.lstrip("/")
         if r in norm or (len(tail) > 12 and tail in norm):
             return r
+    if m := _TAIL_RE.search(norm):
+        return m.group(0).strip()
     return None
+
+
+def _is_protected_tail(path: str) -> bool:
+    p = _norm_path(path)
+    return any(p.endswith("/" + t) or p == t or f"/{t}/" in p for t, _ in _PROTECTED_TAILS) \
+        or bool(re.search(r"/\.claude/settings[^/]*\.json$", p))
 
 
 # ------------------------------------------------------------------ extraction
@@ -322,8 +371,8 @@ def _tamper_reason(tool: str, tool_input: dict) -> str | None:
     if t in WRITE_TOOLS:
         for k in PATH_KEYS:
             v = tool_input.get(k)
-            if isinstance(v, str) and (hit := _is_protected(v, roots)):
-                return f"it would change scamgate's protected files ({hit})"
+            if isinstance(v, str) and ((hit := _is_protected(v, roots)) or _is_protected_tail(v)):
+                return f"it would change scamgate's protected files ({hit or v})"
     if t in CODE_TOOLS or (t not in QUIET_TOOLS and NET_TOOL_HINT.search(t)):
         code = "\n".join(_strings({k: tool_input.get(k) for k in CODE_KEYS}))
         if m := _TAMPER_CMD.search(code):

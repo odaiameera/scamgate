@@ -1,11 +1,12 @@
 """Human-approved overrides, promoted from the ask log with `scamgate promote`.
 
 Rules for overrides, so the gate can't be trained by an attacker:
-- They are only ever written by the CLI after a human confirms (the hook blocks agents from
-  running `scamgate promote` or editing this file).
+- Only a person can add them: `add()` refuses agent environments and non-interactive callers,
+  whether it's called from the CLI or imported directly.
+- Every line is signed (see guard.py). Lines written any other way are ignored.
 - `deny` covers an exact host and its subdomains.
 - `allow` is narrow: one exact host (no subdomains) AND one named rule. It waives only that rule's
-  points for that host. It never waives known-bad feeds, the blocklist, or seed-phrase checks.
+  points for that host. It never waives known-bad feeds, the blocklist, intent checks or your own deny.
 """
 
 from __future__ import annotations
@@ -15,10 +16,12 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scamgate.state import ensure_state_dir, state_dir
+from scamgate import guard
+from scamgate.state import state_dir
 
 NEVER_WAIVED = {"url.known_bad_feed", "url.blocklist", "url.override", "url.intent_mismatch"}
 _HOST = re.compile(r"^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$")
+_interactive = guard._interactive
 
 
 def overrides_path() -> Path:
@@ -38,12 +41,13 @@ def add(host: str, decision: str, *, rule: str | None = None, note: str = "") ->
         raise ValueError("decision must be 'allow' or 'deny'")
     if decision == "allow" and not rule:
         raise ValueError("an allow override needs --rule: it waives one rule on one host")
-    rec = {"host": h, "decision": decision, "rule": rule if decision == "allow" else None,
-           "note": note, "added_by": "human-cli",
-           "added_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-    ensure_state_dir()
-    with overrides_path().open("a", encoding="utf-8") as f:
-        f.write(json.dumps(rec) + "\n")
+    if decision == "allow" and rule in NEVER_WAIVED:
+        raise ValueError(f"{rule} can't be waived: known-bad lists, your blocklist and intent checks always apply")
+    guard.require_human("Adding a scamgate override", interactive=lambda: _interactive())
+    rec = guard.sign({"host": h, "decision": decision, "rule": rule if decision == "allow" else None,
+                      "note": note[:200], "added_by": "human-cli",
+                      "added_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    guard.append_private(overrides_path(), json.dumps(rec))
     return rec
 
 
@@ -57,7 +61,8 @@ def load() -> list[dict]:
             rec = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(rec, dict) and rec.get("host") and rec.get("decision") in ("allow", "deny"):
+        if (isinstance(rec, dict) and rec.get("host") and rec.get("decision") in ("allow", "deny")
+                and guard.verify(rec)):
             out.append(rec)
     return out
 

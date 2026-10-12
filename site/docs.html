@@ -122,7 +122,10 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
         <dt>Running blind</dt><dd>With no feeds cached, links go to you (<code>SCAMGATE_NO_FEEDS=warn</code> relaxes this). Stale feeds are mentioned in every ask and block.</dd>
         <dt>Stated reason</dt><dd>The agent's reason is scored with and without it; the higher score wins, so it can only add risk.</dd>
         <dt>Narrow approvals</dt><dd>Approval keys include the host and the rules that fired (or a hash of the hidden command), so one “always” can't cover other destinations.</dd>
-        <dt>Tampering</dt><dd>Blocks agent writes to scamgate's code, state and the hook config, and commands or code that revoke the hook, remove the server, promote rules, record payees or call scamgate's state modules.</dd>
+        <dt>Tampering</dt><dd>Blocks agent writes to scamgate's code, state, feed cache and virtualenv (a planted <code>.pth</code>
+          file also fails the integrity check), to <code>~/.claude</code> and project <code>.claude/settings*.json</code>, and to the
+          Hermes config, however the path is spelled (<code>~</code>, <code>$HOME</code>, globs, <code>cd</code> + relative). Also blocks
+          commands or code that revoke the hook, remove the server, promote rules, record payees or reach scamgate's state APIs.</dd>
         <dt>Fails closed</dt><dd>Bad input, input over 2 MB, deep nesting or an internal error blocks the call with exit code 2.</dd>
         <dt>Never says allow</dt><dd>Silence means “no objection”. The hook can only tighten your agent's permissions.</dd>
       </dl>
@@ -171,7 +174,9 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
 scamgate promote --host shop.example --decision deny
 scamgate promote --host shop.example --decision allow --rule url.userinfo</code></pre>
       <ul>
-        <li><code>promote</code> shows the exact rule and asks for confirmation. The hook blocks agents from running it.</li>
+        <li><code>promote</code> shows the exact rule and asks for confirmation. It refuses to run without an interactive
+          terminal or inside a known agent (Claude Code, Hermes, Codex), even if an agent imports scamgate's code directly.</li>
+        <li>Every override line is signed with a key in the state dir. A line added to the file any other way is ignored.</li>
         <li>A <strong>deny</strong> covers the host and all its subdomains.</li>
         <li>An <strong>allow</strong> is narrow: it waives <strong>one rule on one exact host</strong>. It can never
           waive known-bad feeds, your blocklist, intent checks or your own deny rules, so an attacker can't train
@@ -184,12 +189,16 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
       <p><code>check_payment</code> doesn't take the agent's word for <code>is_new_payee</code>. It looks the payee
         up in a local history of people you've actually paid, stored as salted hashes, never names or account numbers.</p>
       <ul>
-        <li>Never paid: treated as a new payee, whatever the agent said, with a warning if it claimed otherwise.</li>
+        <li>Never paid: treated as a new payee, whatever the agent said. If it claimed otherwise, that adds risk.</li>
         <li>Paid before, same account: a known payee.</li>
         <li>Paid before, <strong>different account</strong>: treated as changed bank details, the invoice-redirection pattern.</li>
+        <li><strong>Near-name</strong>, new account (“Acme Trading Ltd”, “Acmee Ltd”, a Cyrillic “е”): also changed bank details.</li>
+        <li>An account you've paid under a <strong>different name</strong>: flagged.</li>
+        <li>History key or salt missing: every payee is treated as new with changed details, not silently forgotten.</li>
       </ul>
 <pre class="code" data-lang="shell"><code>scamgate record-payment --payee "Acme Ltd" --account IE29AIBK93115212345678</code></pre>
-      <p>Only you add to it, after a real payment. The hook blocks agents from doing so.</p>
+      <p>Only you add to it, after a real payment, the same way as overrides: in an interactive terminal, not inside an agent,
+        with signed lines.</p>
     </section>
 
     <section id="rules">

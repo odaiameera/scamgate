@@ -221,17 +221,29 @@ scamgate promote --host shop.example --decision deny
 scamgate promote --host shop.example --decision allow --rule url.userinfo
 ```
 
-`promote` asks for confirmation and the hook blocks agents from running it. A `deny` covers the
-host and its subdomains. An `allow` is narrow: it waives **one rule on one exact host**, and can
-never waive known-bad feeds, your blocklist, intent checks or your own deny rules, so an attacker
-can't train the gate into trusting a whole domain.
+Only a person can add an override. `promote` asks for confirmation, and refuses to run without an
+interactive terminal or inside a known agent (Claude Code, Hermes, Codex), even when an agent
+imports scamgate's code directly. Every override line is signed with a key in the state dir, so a
+line typed into the file any other way is ignored. A `deny` covers the host and its subdomains.
+An `allow` is narrow: it waives **one rule on one exact host**, and can never waive known-bad
+feeds, your blocklist, intent checks or your own deny rules, so an attacker can't train the gate
+into trusting a whole domain.
 
 ### Payee history
 
 `check_payment` doesn't take the agent's word for `is_new_payee`. It looks the payee up in a
 local history of people you've actually paid (stored as salted hashes, never names or account
-numbers). A payee you've paid before showing up with a different account is treated as changed
-bank details. Only you add to it, after a real payment; the hook blocks agents from doing so.
+numbers). It flags:
+
+- a payee you've paid before showing up with a different account (changed bank details);
+- a **near-name** with a new account ("Acme Trading Ltd", "Acmee Ltd", a Cyrillic "е" in "Acme"):
+  the classic invoice-redirection trick;
+- an account you've paid before under a different name;
+- an agent calling a payee "known" when there's no record of paying them (adds risk).
+
+Only you add to it, after a real payment, the same way as overrides: interactive, not inside an
+agent, signed lines. If the history's key or salt goes missing, every payee is treated as new
+with changed details, rather than silently forgetting everyone.
 
 ```bash
 scamgate record-payment --payee "Acme Ltd" --account IE29AIBK93115212345678
@@ -307,7 +319,7 @@ Exact decision match: 19/19
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (211 passing). They use fixtures and never touch the network.
+runs the unit tests (278 passing). They use fixtures and never touch the network.
 
 ## Limits
 
@@ -323,9 +335,14 @@ runs the unit tests (211 passing). They use fixtures and never touch the network
 - The brand list is small, and there's no full Public Suffix List handling yet.
 - Payee history only knows payees you've recorded with `record-payment`. scamgate doesn't
   verify IBANs or call your bank.
-- Tamper protection stops an agent's normal tools. It isn't a sandbox: anything with full
-  control of your account can still change scamgate's files, and code can be written to slip
-  past pattern matching. For the strongest setup, give the agent no direct shell access.
+- Tamper protection stops an agent's normal tools: writes to scamgate, its state and feed
+  cache, its virtualenv (a new `.pth` file fails the integrity check), `~/.claude` and project
+  `.claude/settings*.json`, and the Hermes config, however the path is spelled (`~`, `$HOME`,
+  globs, `cd` + relative). It isn't a sandbox: code running as you can read the signing key and
+  rewrite any file, and code can be written to slip past pattern matching. For the strongest
+  setup, give the agent no direct shell access, install scamgate where the agent's user can't
+  write (`uv tool install` as another user, or read-only), and for Claude Code put the hook in
+  managed settings with `allowManagedHooksOnly`.
 - Hermes trusts a hook by its command string, not its file hash, so it won't notice if the
   installed scamgate is replaced. The integrity check covers edits to the installed files.
 
