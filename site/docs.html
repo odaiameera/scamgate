@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation · scamgate</title>
+<meta name="description" content="Install scamgate, add it to your agent, enforce it with a hook, and tune its rules.">
+<meta name="theme-color" content="#0b0c0a">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/IBMPlexSans-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="./" aria-label="scamgate home">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8 26V9M24 26V9" stroke="#ece8dc" stroke-width="2.4" stroke-linecap="round"/><path d="M5 15h22" stroke="#f0b44c" stroke-width="4" stroke-linecap="round"/><path d="M10 15l2.5-3M15 15l2.5-3M20 15l2.5-3" stroke="#0b0c0a" stroke-width="1.6"/></svg>
+      scamgate
+    </a>
+    <nav aria-label="Main">
+      <a href="./#try">Try it</a>
+      <a href="./#enforce">Enforcement</a>
+      <a href="docs.html" aria-current="page">Docs</a>
+      <a class="gh" href="https://github.com/odaiameera/scamgate">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap docs">
+  <nav class="toc" aria-label="On this page">
+    <p>Start</p>
+    <a href="#quickstart">Quickstart</a>
+    <a href="#decides">How it decides</a>
+    <a href="#agents">Add it to your agent</a>
+    <p>Enforce</p>
+    <a href="#hook">The hook</a>
+    <a href="#review">Ask log &amp; promote</a>
+    <a href="#payees">Payee history</a>
+    <p>Reference</p>
+    <a href="#rules">Rules</a>
+    <a href="#feeds">Feeds</a>
+    <a href="#config">Configuration</a>
+    <a href="#cli">CLI</a>
+    <a href="#mcp">MCP tools</a>
+    <p>Project</p>
+    <a href="#limits">Limits</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#contributing">Contributing</a>
+  </nav>
+
+  <main class="doc" id="main">
+    <header>
+      <p class="eyebrow"><b>Docs</b> · scamgate</p>
+      <h1>Documentation</h1>
+      <p>Install it, point your agent at it, then make it impossible to skip. Everything here matches the code
+        in <a href="https://github.com/odaiameera/scamgate">the repository</a>.</p>
+    </header>
+
+    <section id="quickstart">
+      <h2><span class="num">01</span>Quickstart</h2>
+      <p>Requires Python 3.11+. Installing with <code>uv tool</code> gives you two commands:
+        <code>scamgate</code> and <code>scamgate-hook</code>.</p>
+<pre class="code" data-lang="shell"><code>uv tool install git+https://github.com/odaiameera/scamgate
+scamgate update-feeds        <span class="c"># download known-bad-link feeds (the only command that goes online)</span>
+scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pre>
+      <p>Or with pip: <code>pip install "git+https://github.com/odaiameera/scamgate.git"</code>. To hack on it,
+        clone the repo and run <code>uv sync</code>, then prefix commands with <code>uv run</code>.</p>
+      <p>The verdict is JSON: a <code>decision</code>, a <code>risk_score</code>, every <code>reason</code> with its
+        points, a one-line <code>summary</code>, any <code>warnings</code> (for example, no feeds cached yet) and an
+        <code>advisory</code> note. See real verdicts on the <a href="./#try">home page</a>.</p>
+    </section>
+
+    <section id="decides">
+      <h2><span class="num">02</span>How it decides</h2>
+      <ul>
+        <li><strong>Deterministic rules, no LLM.</strong> The same input always gets the same verdict.</li>
+        <li><strong>Points add up.</strong> Each rule that fires adds points and a plain-English reason. The total is capped at 100.</li>
+        <li><strong>Thresholds:</strong> under <span data-threshold="ask">25</span> is <span class="stamp allow">allow</span>,
+          <span data-threshold="ask">25</span> to 69 is <span class="stamp ask">ask</span>, and
+          <span data-threshold="deny">70</span> or more is <span class="stamp deny">deny</span>.</li>
+        <li><strong>Offline.</strong> Checks read a local feed cache. Nothing is sent anywhere.</li>
+      </ul>
+      <p><strong>allow</strong> means no known red flags, not “safe”. The full rule list with current weights is in
+        <a href="#rules">Rules</a>.</p>
+    </section>
+
+    <section id="agents">
+      <h2><span class="num">03</span>Add it to your agent</h2>
+      <p>scamgate runs as an MCP server over stdio with <code>scamgate serve</code>.</p>
+      <h3>Hermes</h3>
+<pre class="code" data-lang="yaml"><code><span class="c"># ~/.hermes/config.yaml</span>
+<span class="k">mcp_servers:</span>
+  <span class="k">scamgate:</span>
+    <span class="k">command:</span> <span class="s">"scamgate"</span>
+    <span class="k">args:</span> [<span class="s">"serve"</span>]</code></pre>
+      <h3>Claude Code</h3>
+<pre class="code" data-lang="shell"><code>claude mcp add scamgate -- scamgate serve</code></pre>
+      <h3>Claude Desktop</h3>
+<pre class="code" data-lang="json"><code>{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"scamgate"</span>: { <span class="k">"command"</span>: <span class="s">"scamgate"</span>, <span class="k">"args"</span>: [<span class="s">"serve"</span>] }
+  }
+}</code></pre>
+      <p>Running from a source checkout instead? Use <code>uv</code> with
+        <code>["--directory", "/path/to/scamgate", "run", "scamgate", "serve"]</code>.</p>
+      <p>Then tell the agent: <em>“Call <code>check_url</code> before opening any link and <code>check_payment</code>
+        before any payment. On ask, stop and show me the reasons. On deny, don't proceed.”</em> That's a request, not
+        a guarantee. To guarantee it, add <a href="#hook">the hook</a>.</p>
+    </section>
+
+    <section id="hook">
+      <h2><span class="num">04</span>Enforce it with a hook</h2>
+      <p>The MCP tools only work when the agent chooses to call them, and a prompt injection can tell it not to.
+        <code>scamgate-hook</code> runs in the harness instead: it reads one hook event as JSON on stdin and writes a
+        decision on stdout. It speaks Hermes shell hooks and Claude Code <code>PreToolUse</code>/<code>PostToolUse</code>.</p>
+      <dl class="dl">
+        <dt>Links</dt><dd>Every URL in a web, browser, image/video, terminal or code tool call is checked. Deny blocks the call; ask sends it to you.</dd>
+        <dt>Unreadable destinations</dt><dd>A call that can reach the network but whose destination scamgate can't see (<code>curl "$URL"</code>) goes to you for approval.</dd>
+        <dt>Bulk</dt><dd>More than 20 links in one call goes to you for approval.</dd>
+        <dt>Tampering</dt><dd>Blocks agent writes to scamgate's code, state and the hook config, and commands or code that revoke the hook, remove the server, promote rules, record payees or call scamgate's state modules.</dd>
+        <dt>Fails closed</dt><dd>Bad input or an internal error blocks the call with exit code 2.</dd>
+        <dt>Never says allow</dt><dd>Silence means “no objection”. The hook can only tighten your agent's permissions.</dd>
+      </dl>
+      <h3>Hermes</h3>
+<pre class="code" data-lang="yaml"><code><span class="c"># ~/.hermes/config.yaml</span>
+<span class="k">hooks:</span>
+  <span class="k">pre_tool_call:</span>
+    - <span class="k">matcher:</span> <span class="s">"browser_.*|web_extract|vision_analyze|video_analyze|terminal|execute_code|write_file|patch"</span>
+      <span class="k">command:</span> <span class="s">"scamgate-hook"</span>
+      <span class="k">timeout:</span> 15
+      <span class="k">fail_closed:</span> true
+  <span class="k">post_tool_call:</span>   <span class="c"># optional: records whether you approved each ask</span>
+    - <span class="k">matcher:</span> <span class="s">"browser_.*|web_extract|vision_analyze|video_analyze|terminal|execute_code"</span>
+      <span class="k">command:</span> <span class="s">"scamgate-hook"</span>
+      <span class="k">timeout:</span> 15</code></pre>
+      <p>Hermes asks you to approve a new hook the first time it runs in an interactive session. Check it with
+        <code>hermes hooks list</code> or <code>hermes hooks doctor</code>.</p>
+      <h3>Claude Code</h3>
+<pre class="code" data-lang="json"><code><span class="c">// .claude/settings.json</span>
+{<span class="k">"hooks"</span>: {
+  <span class="k">"PreToolUse"</span>:  [{<span class="k">"matcher"</span>: <span class="s">"WebFetch|Bash|Write|Edit|mcp__.*browser.*"</span>,
+                   <span class="k">"hooks"</span>: [{<span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"scamgate-hook"</span>, <span class="k">"timeout"</span>: 15}]}],
+  <span class="k">"PostToolUse"</span>: [{<span class="k">"matcher"</span>: <span class="s">"WebFetch|Bash|mcp__.*browser.*"</span>,
+                   <span class="k">"hooks"</span>: [{<span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"scamgate-hook"</span>}]}]
+}}</code></pre>
+      <div class="note"><b>Install a pinned copy</b>Run the hook from <code>uv tool install git+https://github.com/odaiameera/scamgate@&lt;commit&gt;</code>,
+        not a source checkout. An installed copy checks its own files against the hashes recorded at install time on
+        every call, and blocks everything if they changed. A source checkout has nothing to check against.</div>
+      <p>Each gated call costs one process start, about 0.7 s on Windows. Calls that don't touch the network or
+        scamgate's files pass straight through.</p>
+    </section>
+
+    <section id="review">
+      <h2><span class="num">05</span>Ask log, review &amp; promote</h2>
+      <p>Every ask and deny is logged to the state folder with redacted targets (no passwords, query values, card
+        numbers, IBANs, emails or keys), the rules that fired, the score, the agent's stated reason and whether you
+        then let the call run. The stated reason is stored for you to read, marked <strong>untrusted</strong>, and
+        never used automatically: an injected page can write it.</p>
+<pre class="code" data-lang="shell"><code>scamgate review --days 7                       <span class="c"># which hosts keep tripping it, and what you did</span>
+scamgate promote --host shop.example --decision deny
+scamgate promote --host shop.example --decision allow --rule url.userinfo</code></pre>
+      <ul>
+        <li><code>promote</code> shows the exact rule and asks for confirmation. The hook blocks agents from running it.</li>
+        <li>A <strong>deny</strong> covers the host and all its subdomains.</li>
+        <li>An <strong>allow</strong> is narrow: it waives <strong>one rule on one exact host</strong>. It can never
+          waive known-bad feeds, your blocklist, intent checks or your own deny rules, so an attacker can't train
+          the gate into trusting a whole domain.</li>
+      </ul>
+    </section>
+
+    <section id="payees">
+      <h2><span class="num">06</span>Payee history</h2>
+      <p><code>check_payment</code> doesn't take the agent's word for <code>is_new_payee</code>. It looks the payee
+        up in a local history of people you've actually paid, stored as salted hashes, never names or account numbers.</p>
+      <ul>
+        <li>Never paid: treated as a new payee, whatever the agent said, with a warning if it claimed otherwise.</li>
+        <li>Paid before, same account: a known payee.</li>
+        <li>Paid before, <strong>different account</strong>: treated as changed bank details, the invoice-redirection pattern.</li>
+      </ul>
+<pre class="code" data-lang="shell"><code>scamgate record-payment --payee "Acme Ltd" --account IE29AIBK93115212345678</code></pre>
+      <p>Only you add to it, after a real payment. The hook blocks agents from doing so.</p>
+    </section>
+
+    <section id="rules">
+      <h2><span class="num">07</span>Rules</h2>
+      <p>Current rules and points, read from <code>src/scamgate/config/rules.yaml</code> when this site was built.</p>
+      <table class="tbl" id="rules-table"><tbody><tr><td>Loading the rule list…</td></tr></tbody></table>
+      <p>Feed matches: an exact listed URL scores 100, an exact listed host 75, and a subdomain of a listed domain
+        (domain feeds only) 50. Brand look-alikes score 60, a brand name sitting in an unrelated domain 45, and a real
+        brand domain used as a prefix (<code>paypal.com.secure-login.xyz</code>) 80.</p>
+    </section>
+
+    <section id="feeds">
+      <h2><span class="num">08</span>Known-bad-link feeds</h2>
+      <p>Only <code>scamgate update-feeds</code> touches the network. Checks read the local cache. No feed data is
+        bundled. A failed download keeps that feed's previous cache, and verdicts warn when no feed is cached or a feed
+        is older than 24 hours. A running MCP server picks up a refreshed cache without a restart.</p>
+      <table class="tbl">
+        <thead><tr><th>Feed</th><th>Default</th><th>Terms</th></tr></thead>
+        <tbody>
+          <tr><td><code>openphish</code></td><td>yes</td><td><a href="https://openphish.com/terms.html">OpenPhish terms</a>: personal, non-commercial use only, no redistribution</td></tr>
+          <tr><td><code>phishing_database_domains</code></td><td>yes</td><td><a href="https://github.com/Phishing-Database/Phishing.Database">Phishing.Database</a>, MIT</td></tr>
+          <tr><td><code>phishing_database_links</code></td><td><code>--all</code></td><td>Phishing.Database active links (~65 MB), MIT</td></tr>
+          <tr><td><code>urlhaus</code></td><td>if key set</td><td><a href="https://urlhaus.abuse.ch/api/">abuse.ch URLhaus</a>: free Auth-Key required (<code>SCAMGATE_URLHAUS_AUTH_KEY</code>), fair-use terms</td></tr>
+        </tbody>
+      </table>
+      <p>You're responsible for following each feed's terms. Refresh on a schedule, for example every 6 hours:</p>
+<pre class="code" data-lang="cron"><code>0 */6 * * * scamgate update-feeds &gt;&gt; ~/.cache/scamgate/update.log 2&gt;&amp;1</code></pre>
+      <h3>False positives on shared platforms</h3>
+      <p>Feeds list single bad pages on big shared platforms (Google Docs and Sites, Microsoft login, Discord CDN,
+        link shorteners, Vercel). For hosts under <code>lists.feed_host_ignore</code> and official brand domains, only
+        an exact URL listing counts, so one phishing page on <code>x.vercel.app</code> never flags
+        <code>vercel.app</code>. The trade-off: a scam on a subdomain of an ignored platform is only caught by exact URL.</p>
+    </section>
+
+    <section id="config">
+      <h2><span class="num">09</span>Configuration</h2>
+      <p>Weights, thresholds, brand lists and word lists live in
+        <a href="https://github.com/odaiameera/scamgate/blob/main/src/scamgate/config/rules.yaml"><code>rules.yaml</code></a>.
+        Your own blocklist is <code>data/blocklist.txt</code>; a listed domain also blocks its subdomains.</p>
+      <table class="tbl">
+        <thead><tr><th>Variable</th><th>What it sets</th></tr></thead>
+        <tbody>
+          <tr><td><code>SCAMGATE_CONFIG</code></td><td>Path to your own <code>rules.yaml</code></td></tr>
+          <tr><td><code>SCAMGATE_BLOCKLIST</code></td><td>Path to your own blocklist</td></tr>
+          <tr><td><code>SCAMGATE_CACHE_DIR</code></td><td>Feed cache. Default <code>$XDG_CACHE_HOME/scamgate</code>, else <code>~/.cache/scamgate</code></td></tr>
+          <tr><td><code>SCAMGATE_STATE_DIR</code></td><td>Ask log, overrides, payee history. Default <code>$XDG_STATE_HOME/scamgate</code>, else <code>~/.local/state/scamgate</code></td></tr>
+          <tr><td><code>SCAMGATE_URLHAUS_AUTH_KEY</code></td><td>Enables the URLhaus feed</td></tr>
+          <tr><td><code>SCAMGATE_PROTECT</code></td><td>Extra paths the hook should protect from agent writes (path-separator list)</td></tr>
+        </tbody>
+      </table>
+      <p>To add a rule, write a function in <code>src/scamgate/rules/</code> decorated with
+        <code>@register("url.my_rule", kind="url")</code>, give it an entry under <code>rules:</code> in
+        <code>rules.yaml</code>, and add tests and a scenario.</p>
+    </section>
+
+    <section id="cli">
+      <h2><span class="num">10</span>CLI</h2>
+      <table class="tbl">
+        <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>check-url URL [--intent]</code></td><td>Check one link and print the verdict as JSON</td></tr>
+          <tr><td><code>serve</code></td><td>Run the MCP server over stdio</td></tr>
+          <tr><td><code>update-feeds [-f NAME] [--all]</code></td><td>Download feeds into the cache; failed feeds keep their old cache</td></tr>
+          <tr><td><code>feeds-status</code></td><td>Cached feeds, entry counts and age</td></tr>
+          <tr><td><code>hook</code></td><td>Same as <code>scamgate-hook</code>: one hook event on stdin, decision on stdout</td></tr>
+          <tr><td><code>review [--days] [--limit]</code></td><td>Hosts that keep tripping the gate, and what you did with each ask</td></tr>
+          <tr><td><code>promote --host --decision [--rule]</code></td><td>Add a human-confirmed allow or deny override</td></tr>
+          <tr><td><code>record-payment --payee --account</code></td><td>Record a payee you've actually paid</td></tr>
+          <tr><td><code>bench [--strict] [-v]</code></td><td>Run the example scenarios and report caught, missed and false positives</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="mcp">
+      <h2><span class="num">11</span>MCP tools</h2>
+<pre class="code" data-lang="text"><code>check_url(url: str, intent: str | None = None) -&gt; Verdict
+
+check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
+              method: "card" | "bank_transfer" | "crypto" | "gift_card" | "other",
+              context_text: str | None = None, is_new_payee: bool | None = None,
+              bank_details_changed: bool | None = None, budget: float | None = None,
+              vop_result: "match" | "close_match" | "no_match" | "unavailable" | None = None) -&gt; Verdict</code></pre>
+      <p><code>Verdict</code> = <code>decision</code>, <code>risk_score</code>, <code>reasons[]</code>
+        (<code>rule_id</code>, <code>explanation</code>, <code>weight</code>), <code>summary</code>,
+        <code>warnings[]</code>, <code>advisory</code>.</p>
+    </section>
+
+    <section id="limits">
+      <h2><span class="num">12</span>Limits</h2>
+      <ul>
+        <li><strong>Advisory over MCP.</strong> Without the hook, the agent has to call it and respect the answer. Even
+          with the hook it only sees tool calls: a redirect after the page opens, or a destination hidden in a
+          variable, gets your approval rather than a check.</li>
+        <li><strong>Heuristics miss things.</strong> Rules miss scams that don't match them and sometimes flag legitimate actions.</li>
+        <li><strong>Known misses:</strong> <code>applebees.com</code> scores 60 (ask) because it contains “apple”. A bank
+          transfer to a new payee with no other signals scores 20 (allow).</li>
+        <li>The domain-age rule is a stub and off. The brand list is small, and there's no full Public Suffix List handling yet.</li>
+        <li>Payee history only knows payees you've recorded. scamgate doesn't verify IBANs or call your bank.</li>
+        <li><strong>Not a sandbox.</strong> Tamper protection stops an agent's normal tools. Anything with full control of
+          your account can still change scamgate's files, and code can be written to slip past pattern matching. For
+          the strongest setup, give the agent no direct shell access.</li>
+        <li>Hermes trusts a hook by its command string, not its file hash. The integrity check covers edits to the installed files.</li>
+      </ul>
+      <p>scamgate isn't financial, legal or security advice, and doesn't replace your bank's fraud controls,
+        Verification of Payee, or your own judgement.</p>
+    </section>
+
+    <section id="roadmap">
+      <h2><span class="num">13</span>Roadmap</h2>
+      <ul>
+        <li>Domain age via RDAP, behind the existing <code>url.domain_age</code> rule</li>
+        <li>IBAN checksum validation and Verification of Payee integration</li>
+        <li>Redirect after-check: re-check the page a browser actually landed on</li>
+        <li>Optional local model as a tie-breaker on vague cases only, never overruling a hard rule</li>
+        <li>A bigger, configurable brand list and proper Public Suffix List handling</li>
+      </ul>
+    </section>
+
+    <section id="contributing">
+      <h2><span class="num">14</span>Contributing</h2>
+      <p>Issues and pull requests are welcome, especially new rules, scenarios (scam and legit) and false-positive
+        reports. Include a test or scenario with each rule change, and keep checks offline and deterministic.
+        <code>scamgate bench --strict</code> runs 19 hand-written example scenarios (13 scam, 6 legit): a regression
+        check, not a real-world detection rate.</p>
+<pre class="code" data-lang="shell"><code>git clone https://github.com/odaiameera/scamgate && cd scamgate
+uv sync
+uv run pytest
+uv run scamgate bench --strict</code></pre>
+      <p>See <a href="https://github.com/odaiameera/scamgate/blob/main/AGENTS.md"><code>AGENTS.md</code></a> for repo conventions.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>scamgate is advisory. It can miss scams and flag legitimate actions. MIT licensed. Feed data stays under
+      each provider's terms. Fonts: Instrument Serif and IBM Plex, SIL Open Font License.</p>
+    <nav aria-label="Footer"><a href="./">Home</a><a href="https://github.com/odaiameera/scamgate">GitHub</a><a href="https://github.com/odaiameera/scamgate/issues">Issues</a></nav>
+  </div>
+</footer>
+
+<script src="assets/demo-data.js"></script>
+<script src="assets/site.js"></script>
+</body>
+</html>
