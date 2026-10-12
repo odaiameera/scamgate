@@ -127,3 +127,9 @@ def test_override_file_is_json_lines_with_who_and_when():
 def test_promote_rejects_wildcards_and_non_hosts(bad):
     with pytest.raises(ValueError):
         overrides.add(bad, "deny")
+
+
+def test_allow_override_cannot_waive_your_own_deny():
+    overrides.add("shop.example", "deny")
+    overrides.add("shop.example", "allow", rule="url.override")
+    assert engine.check_url("https://shop.example/").decision is Decision.deny

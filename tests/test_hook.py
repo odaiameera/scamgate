@@ -279,3 +279,29 @@ def test_fast_entry_point_registered():
 
     eps = {e.name: e.value for e in entry_points(group="console_scripts")}
     assert eps.get("scamgate-hook") == "scamgate.hook_entry:main"
+
+
+@pytest.mark.parametrize("cmd", [
+    "scamgate record-payment --payee 'Totally Legit' --account GB33BUKB20201555555555",
+    "uv run scamgate record-payment --payee X --account Y",
+])
+def test_agent_cannot_record_payees(cmd):
+    # Otherwise an injected agent could make a scammer look like a known payee.
+    o, _ = out(hermes("terminal", {"command": cmd}))
+    assert o["action"] == "block", cmd
+
+
+@pytest.mark.parametrize("code", [
+    "from scamgate import overrides\noverrides.add('evil.example', 'allow', rule='url.lookalike_brand')",
+    "import scamgate.payees as p; p.record('Scammer', 'X')",
+    "from scamgate.asklog import record_outcome",
+    "from scamgate import state, engine",
+])
+def test_agent_code_cannot_use_scamgate_state_apis(code):
+    o, _ = out(hermes("execute_code", {"code": code}))
+    assert o["action"] == "block", code
+
+
+def test_agent_code_may_still_use_the_checker():
+    o, _ = out(hermes("execute_code", {"code": "from scamgate import engine\nprint(engine.check_url(x))"}))
+    assert o.get("action") != "block"

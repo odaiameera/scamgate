@@ -68,6 +68,8 @@ $ uv run scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"
 }
 ```
 
+(`warnings` is empty once feeds are cached. Before `update-feeds` it says no feed is cached.)
+
 A link listed in a feed comes back with the feed named in the reason:
 
 ```json
@@ -78,7 +80,8 @@ A link listed in a feed comes back with the feed named in the reason:
 }
 ```
 
-Other commands: `scamgate feeds-status`, `scamgate bench`, `scamgate serve` (MCP over stdio).
+Other commands: `scamgate feeds-status`, `scamgate bench`, `scamgate serve` (MCP over stdio),
+plus `hook`, `review`, `promote` and `record-payment` (see [Enforce it with a hook](#enforce-it-with-a-hook)).
 
 ## Add it to your agent
 
@@ -143,12 +146,14 @@ It speaks Hermes shell hooks and Claude Code `PreToolUse` hooks.
 - **Opaque network calls** (`curl "$URL"`, `requests.get(u)`): scamgate can't see the
   destination, so you approve it.
 - **Tampering:** blocks agent writes to scamgate's own code and state and to the hook config,
-  plus commands that revoke the hook, remove the server or promote rules.
+  plus commands or code that revoke the hook, remove the server, promote rules, record payees
+  or call scamgate's state APIs directly.
 - **Fails closed:** bad input or an internal error blocks the call (exit 2).
 - **Never says "allow".** Silence means "no objection", so it can only tighten your agent's
   permissions, never loosen them.
 
-**Hermes** (`~/.hermes/config.yaml`), then approve it once with `hermes hooks list`:
+**Hermes** (`~/.hermes/config.yaml`). Hermes asks you to approve a new hook the first time it
+runs in an interactive session. Check it with `hermes hooks list` or `hermes hooks doctor`:
 
 ```yaml
 hooks:
@@ -174,10 +179,10 @@ hooks:
 }}
 ```
 
-Install a pinned copy for the hook (`uv tool install git+https://github.com/odaiameera/scamgate@<tag>`)
-rather than running from a source checkout: an installed copy verifies its own files against the
-wheel's RECORD hashes on every call and blocks everything if they changed. A source checkout
-has nothing to verify against.
+Install a pinned copy for the hook (`uv tool install git+https://github.com/odaiameera/scamgate@<commit>`)
+rather than running from a source checkout: an installed copy checks its own files against the
+hashes recorded at install time on every call, and blocks everything if they changed. A source
+checkout has nothing to check against.
 
 Each gated call costs one process start (about 0.7 s on Windows). Calls that don't touch
 the network, or scamgate's files, pass straight through.
@@ -196,15 +201,15 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo
 
 `promote` asks for confirmation and the hook blocks agents from running it. A `deny` covers the
 host and its subdomains. An `allow` is narrow: it waives **one rule on one exact host**, and can
-never waive known-bad feeds, your blocklist or intent checks, so an attacker can't train the
-gate into trusting a whole domain.
+never waive known-bad feeds, your blocklist, intent checks or your own deny rules, so an attacker
+can't train the gate into trusting a whole domain.
 
 ### Payee history
 
 `check_payment` doesn't take the agent's word for `is_new_payee`. It looks the payee up in a
 local history of people you've actually paid (stored as salted hashes, never names or account
 numbers). A payee you've paid before showing up with a different account is treated as changed
-bank details.
+bank details. Only you add to it, after a real payment; the hook blocks agents from doing so.
 
 ```bash
 scamgate record-payment --payee "Acme Ltd" --account IE29AIBK93115212345678
@@ -280,7 +285,7 @@ Exact decision match: 19/19
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (61 passing). They use fixtures and never touch the network.
+runs the unit tests (132 passing). They use fixtures and never touch the network.
 
 ## Limits
 
@@ -297,7 +302,10 @@ runs the unit tests (61 passing). They use fixtures and never touch the network.
 - Payee history only knows payees you've recorded with `record-payment`. scamgate doesn't
   verify IBANs or call your bank.
 - Tamper protection stops an agent's normal tools. It isn't a sandbox: anything with full
-  control of your account can still change scamgate's files.
+  control of your account can still change scamgate's files, and code can be written to slip
+  past pattern matching. For the strongest setup, give the agent no direct shell access.
+- Hermes trusts a hook by its command string, not its file hash, so it won't notice if the
+  installed scamgate is replaced. The integrity check covers edits to the installed files.
 
 **Disclaimer:** scamgate is not financial, legal or security advice, and it doesn't replace your
 bank's fraud controls, Verification of Payee, or human judgement.

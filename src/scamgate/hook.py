@@ -63,7 +63,9 @@ _NET_RE = re.compile(
 _TAMPER_CMD = re.compile(
     r"(?i)(hermes\s+(?:hooks\s+(?:revoke|rm|remove)|mcp\s+(?:rm|remove)|plugins\s+(?:disable|remove)|"
     r"config\s+set\s+(?:hooks\b|hooks_auto_accept|mcp_servers))|"
-    r"scamgate\s+promote|"
+    r"scamgate\s+(?:promote|record-payment)|"
+    r"scamgate\.(?:overrides|payees|asklog|state)\b|"
+    r"from\s+scamgate\s+import\s+[^\n;]*\b(?:overrides|payees|asklog|state)\b|"
     r"(?:uv\s+tool|pipx|pip3?|uv\s+pip)\s+uninstall\s+(?:-y\s+)?scamgate|"
     r"claude\s+mcp\s+remove\s+scamgate|"
     r"--accept-hooks|HERMES_ACCEPT_HOOKS)"
