@@ -1,74 +1,82 @@
 # scamgate
 
-**Self-hosted scam check for AI agents: verify links and payments before they act.**
+A self-hosted scam check for AI agents: verify links and payments before the agent acts.
 
-scamgate is a small, open MCP server. Before an agent opens a link or makes a payment, it
-calls scamgate and gets back a verdict:
+AI agents now click links and make payments for people, and scammers follow the money. Text
+planted in pages, listings or messages can steer an agent to a fake shop, a credential prompt or
+a "pay by bank transfer" request. Agent payment rails secure *the payment* (tokens, limits,
+authentication). They don't judge whether the payee or the site is a scam. scamgate does that
+check, runs locally as an MCP server, and makes no network calls while checking.
 
-- `allow`: no meaningful scam signals
-- `ask`: stop and show the reasons to the human
-- `deny`: don't proceed
+## How it decides
 
-Every verdict comes with a 0–100 risk score and plain-English reasons, each tied to a rule id.
-v1 is deterministic: local rules, no LLM, no network calls.
+- Deterministic rules, no LLM judging. The same input always gets the same verdict.
+- Each rule that fires adds points and a plain-English reason. The total (capped at 100) decides:
+  - **allow**: under 25
+  - **ask** (stop and check with the human): 25 to 69
+  - **deny**: 70 or more
+- The agent gets the decision, the score, every reason, and any warnings (for example a stale feed cache).
 
-> **Status:** early scaffold (v0.1). MIT licensed (see LICENSE). Feed data keeps its own terms (see Sources).
+**Link rules:** known-bad-link feeds, your own blocklist, brand look-alikes (typosquats,
+homoglyphs, brand names on unofficial domains), raw IP hosts, punycode, cheap abused TLDs, and
+pages asking for a seed phrase or a login the task doesn't need.
 
-## Why
+**Payment rules:** new payee plus urgency, changed bank details, irreversible methods (crypto,
+gift cards, transfer to a new payee), sellers insisting on a method, over budget, pressure or
+secrecy phrases, and Verification of Payee results.
 
-AI agents now browse, shop and pay for people, and they can be steered. Text planted in pages,
-listings or messages (prompt injection) can push an agent toward a fake shop, a credential
-prompt or a "pay by transfer" request. Look-alike domains and urgent payment requests, the
-same tricks that work on humans, work on agents too.
+## Quickstart
 
-Agent payment protocols and card-network programs secure *the payment* (tokens, limits,
-authentication). They don't judge whether *the decision to pay* makes sense: is this payee
-new, did the bank details just change, why does the seller only take crypto? Those are fraud
-typology questions, and that's the gap scamgate covers. It also covers bank transfers and plain
-links, not just one payment network.
-
-## What v1 checks
-
-**Links (`check_url`)**
-
-| Rule | Fires when |
-| --- | --- |
-| `url.blocklist` | Domain or a parent domain is in your own local list, `data/blocklist.txt` (or `$SCAMGATE_BLOCKLIST`) |
-| `url.known_bad_feed` | URL is in a cached known-bad-link feed: exact URL = 100 (deny), exact host = 75, parent of a listed domain = 50. The reason names the feed |
-| `url.lookalike_brand` | Typosquat or homoglyph of a known brand (`paypa1`, `amaz0n`, `arnazon`, Cyrillic letters), or a brand name on an unofficial domain. Brands: PayPal, Revolut, AIB, Bank of Ireland, Stripe, Amazon, Apple |
-| `url.ip_host` | Link goes to a raw IP address |
-| `url.punycode` | Host uses punycode / non-ASCII characters |
-| `url.suspicious_tld` | Cheap, commonly abused TLD (`.top`, `.xyz`, `.shop`, …) |
-| `url.intent_mismatch` | Page asks for a seed phrase / private key (always), or a login the agent's stated intent doesn't need |
-| `url.domain_age` | *Stub, off by default.* Plug in a WHOIS/RDAP provider to flag brand-new domains |
-
-**Payments (`check_payment`)**
-
-| Rule | Fires when |
-| --- | --- |
-| `pay.new_payee_urgency` | New payee + urgency language ("urgent", "today", "immediately") |
-| `pay.bank_details_changed` | Flag passed in, or messages say the bank details changed (invoice redirection) |
-| `pay.irreversible_method` | Crypto or gift cards; bank transfer to a new payee (lower weight) |
-| `pay.method_restricted` | Seller insists on a method ("crypto only", "no cards", "gift cards") |
-| `pay.over_budget` | Amount is over the budget the human set |
-| `pay.pressure_phrases` | Secrecy or pressure ("keep this confidential", "do not tell the bank", "guaranteed returns") |
-| `pay.vop_mismatch` | Verification of Payee result is `no_match`, `close_match` or `unavailable` |
-
-Weights, thresholds and word lists live in [`src/scamgate/config/rules.yaml`](src/scamgate/config/rules.yaml).
-The risk score is the sum of fired rule weights, capped at 100. Defaults: `ask` at 25, `deny` at 70.
-
-## Install
-
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.11+.
 
 ```bash
-git clone git@github.com:odaiameera/scamgate.git
+# with uv
+git clone https://github.com/odaiameera/scamgate.git
 cd scamgate
 uv sync
-uv run scamgate bench                      # run the example scenarios
-uv run scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"
-uv run scamgate serve                      # MCP server on stdio
+uv run scamgate update-feeds      # download the known-bad-link feeds into ~/.cache/scamgate
+
+# or with pip
+pip install "git+https://github.com/odaiameera/scamgate.git"
+scamgate update-feeds
 ```
+
+Check a link (real output):
+
+```console
+$ uv run scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"
+{
+  "decision": "deny",
+  "risk_score": 100,
+  "reasons": [
+    {
+      "rule_id": "url.lookalike_brand",
+      "explanation": "'paypa1.com' disguises 'paypal' with look-alike characters ('paypa1'). The real site is paypal.com.",
+      "weight": 60
+    },
+    {
+      "rule_id": "url.intent_mismatch",
+      "explanation": "The task is 'buy a ticket', but the link goes to a 'login' page. A credential prompt the task doesn't need is a classic phishing step.",
+      "weight": 45
+    }
+  ],
+  "summary": "Do not proceed with this link. Main concern: 'paypa1.com' disguises 'paypal' with look-alike characters ('paypa1'). The real site is paypal.com.",
+  "warnings": [],
+  "advisory": "scamgate is advisory. It can miss scams and flag legitimate actions; a human should make the final call on anything flagged."
+}
+```
+
+A link listed in a feed comes back with the feed named in the reason:
+
+```json
+{
+  "rule_id": "url.known_bad_feed",
+  "explanation": "This exact link is listed as phishing/malware by OpenPhish community feed.",
+  "weight": 100
+}
+```
+
+Other commands: `scamgate feeds-status`, `scamgate bench`, `scamgate serve` (MCP over stdio).
 
 ## Add it to your agent
 
@@ -102,111 +110,125 @@ mcp_servers:
     args: ["--directory", "/path/to/scamgate", "run", "scamgate", "serve"]
 ```
 
-Then tell the agent, in its system prompt or instructions:
-*"Call `check_url` before opening any link and `check_payment` before any payment. On `ask`, stop
-and show me the reasons. On `deny`, don't proceed."*
+Then tell the agent: *"Call `check_url` before opening any link and `check_payment` before any
+payment. On `ask`, stop and show me the reasons. On `deny`, don't proceed."*
 
-### Tools
+### MCP tools
 
 ```text
-check_url(url: str, intent: str | None) -> Verdict
-check_payment(payee_name, payee_account, amount, currency,
-              method: card | bank_transfer | crypto | gift_card | other,
-              context_text=None, is_new_payee=None, bank_details_changed=None,
-              budget=None, vop_result: match | close_match | no_match | unavailable = None) -> Verdict
+check_url(url: str, intent: str | None = None) -> Verdict
+
+check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
+              method: "card" | "bank_transfer" | "crypto" | "gift_card" | "other",
+              context_text: str | None = None, is_new_payee: bool | None = None,
+              bank_details_changed: bool | None = None, budget: float | None = None,
+              vop_result: "match" | "close_match" | "no_match" | "unavailable" | None = None) -> Verdict
 ```
 
-Example verdict:
-
-```json
-{
-  "decision": "deny",
-  "risk_score": 80,
-  "reasons": [
-    {"rule_id": "url.lookalike_brand", "weight": 60,
-     "explanation": "'amaz0n-deals.shop' disguises 'amazon' with look-alike characters ('amaz0n'). The real site is amazon.com."},
-    {"rule_id": "url.suspicious_tld", "weight": 20,
-     "explanation": "The domain ends in '.shop', a cheap ending often used by throwaway scam sites."}
-  ],
-  "summary": "Do not proceed with this link. Main concern: ...",
-  "advisory": "scamgate is advisory. ..."
-}
-```
-
-## Scenarios and bench
-
-`scenarios/` holds **example** cases written for this project (not real incidents), each with
-a `label` (`scam` / `legit`) and the `expected` decision. `scamgate bench` runs them and reports
-caught, missed and false positives. Add `--strict` to fail on any mismatch, `-v` to see reasons.
-
-The bench is a regression check for the rules. Scores on hand-written scenarios say nothing about
-real-world detection rates.
-
-## Adding a rule
-
-1. Write a function in `src/scamgate/rules/url.py` or `payment.py` and decorate it with
-   `@register("pay.my_rule", kind="payment")`. Return a `Hit(explanation)` or `None`.
-2. Add `pay.my_rule: { enabled: true, weight: 30 }` under `rules:` in `rules.yaml`.
-3. Add tests and at least one scenario.
+`Verdict` = `decision`, `risk_score`, `reasons[]` (`rule_id`, `explanation`, `weight`),
+`summary`, `warnings[]`, `advisory`.
 
 ## Known-bad-link feeds
 
-scamgate checks links against free public phishing/malware feeds. **Only `scamgate update-feeds`
-touches the network.** Checks read a local cache, so they stay offline and fast. No feed data is
-committed or bundled.
+Only `scamgate update-feeds` touches the network. Checks read a local cache. No feed data is
+bundled in this repo.
 
 ```bash
-uv run scamgate update-feeds            # default feeds
-uv run scamgate update-feeds --all      # also the large opt-in feeds
-uv run scamgate update-feeds -f openphish
-uv run scamgate feeds-status            # counts and fetch time per feed
+scamgate update-feeds            # default feeds
+scamgate update-feeds --all      # also the large opt-in feed
+scamgate update-feeds -f openphish
+scamgate feeds-status
 ```
 
-Cache: `$SCAMGATE_CACHE_DIR`, else `$XDG_CACHE_HOME/scamgate`, else `~/.cache/scamgate`. Each feed is
-stored as its own normalized URL list and host list (so each entry keeps its source), and
-`meta.json` records the fetch time, source URL and count per feed. If a download fails, that
-feed's previous cache is kept. A running MCP server picks up a refreshed cache automatically.
-Verdicts carry a `warnings` entry when no feed is cached or a feed is older than 24 hours.
+The cache lives in `$SCAMGATE_CACHE_DIR`, else `$XDG_CACHE_HOME/scamgate`, else `~/.cache/scamgate`.
+Each feed keeps its own files, and `meta.json` records fetch time, source and counts. A failed
+download keeps that feed's previous cache. Verdicts warn when no feed is cached or a feed is older
+than 24 hours. A running MCP server picks up a refreshed cache without a restart.
 
-| Feed | Default | What | License / terms |
+| Feed | Default | Source | License / terms |
 | --- | --- | --- | --- |
-| `openphish` | yes | [OpenPhish community feed](https://openphish.com/feed.txt), ~300 live phishing URLs, refreshed every 12h | [OpenPhish Terms](https://openphish.com/terms.html): **personal / non-commercial research only**, no redistribution. Commercial use needs OpenPhish's written consent (paid feed) |
-| `phishing_database_domains` | yes | [Phishing.Database](https://github.com/Phishing-Database/Phishing.Database) `phishing-domains-ACTIVE.txt`, ~390k domains | MIT, © Mitchell Krog, Nissar Chababy and contributors |
-| `phishing_database_links` | `--all` | Same project, `phishing-links-ACTIVE.txt`, ~780k URLs (~65 MB download) | MIT, as above |
-| `urlhaus` | if key set | [abuse.ch URLhaus](https://urlhaus.abuse.ch/api/) online malware-URL CSV export | Free [abuse.ch Auth-Key](https://auth.abuse.ch/) required (`export SCAMGATE_URLHAUS_AUTH_KEY=...`). Fair-use terms; commercial use may need a paid abuse.ch plan |
+| `openphish` | yes | [OpenPhish community feed](https://openphish.com/feed.txt) | [OpenPhish Terms](https://openphish.com/terms.html): **personal, non-commercial use only**, no redistribution. Commercial use needs OpenPhish's written consent |
+| `phishing_database_domains` | yes | [Phishing.Database](https://github.com/Phishing-Database/Phishing.Database) active domains | MIT |
+| `phishing_database_links` | `--all` | Phishing.Database active links (~65 MB download) | MIT |
+| `urlhaus` | if key set | [abuse.ch URLhaus](https://urlhaus.abuse.ch/api/) online malware URLs | Free [abuse.ch Auth-Key](https://auth.abuse.ch/) required (`SCAMGATE_URLHAUS_AUTH_KEY`). Fair-use terms; commercial use may need a paid plan |
 
-Not used: **PhishTank** (new-user registration is disabled, so no app keys; keyless downloads are limited to a few per day and timed out in testing) and **Google Safe
-Browsing / Web Risk** (non-commercial only / paid).
+You are responsible for following each feed's terms. Not used: PhishTank (new registrations are
+disabled) and Google Safe Browsing / Web Risk (non-commercial only, or paid).
 
-False positives: feeds list single bad pages on big shared platforms (Google Docs/Sites, Firebase,
-Microsoft login, Discord CDN, link shorteners). For hosts under `lists.feed_host_ignore` in
-`rules.yaml`, and for the official brand domains, only an *exact URL* listing counts.
-Parent-domain matches only come from domain feeds, so one phishing page on `x.vercel.app` never
-flags `vercel.app`.
+Matching: an exact listed URL scores 100, an exact listed host 75, and a subdomain of a listed
+domain (domain feeds only) 50.
 
-Refresh with cron (every 6 hours; OpenPhish updates every 12h, so don't poll it more often than hourly):
+Refresh with cron, for example every 6 hours:
 
 ```cron
-0 */6 * * * cd /path/to/scamgate && /usr/bin/env uv run scamgate update-feeds >> ~/.cache/scamgate/update.log 2>&1
+0 */6 * * * cd /path/to/scamgate && uv run scamgate update-feeds >> ~/.cache/scamgate/update.log 2>&1
 ```
 
-`data/blocklist.txt` stays your own local list (it ships with a few made-up `.example` domains).
+Your own blocklist: [`data/blocklist.txt`](data/blocklist.txt) (or `$SCAMGATE_BLOCKLIST`). It
+ships with a few made-up `.example` domains.
+
+## False positives
+
+Feeds list single bad pages on big shared platforms (Google Docs and Sites, Firebase storage,
+Microsoft login, Discord CDN, link shorteners). Flagging those whole hosts would block normal
+sites. For domains under `lists.feed_host_ignore` in
+[`rules.yaml`](src/scamgate/config/rules.yaml) (and their subdomains), and for official brand
+domains, only an exact URL listing counts. One phishing page on `x.vercel.app` never flags
+`vercel.app`. The trade-off: a scam on a subdomain of an ignored platform is only caught by exact URL.
+
+## Configuration
+
+Weights, thresholds, brand lists and word lists live in
+[`src/scamgate/config/rules.yaml`](src/scamgate/config/rules.yaml). Point `SCAMGATE_CONFIG` at
+your own copy to override it. To add a rule, write a function in
+[`src/scamgate/rules/`](src/scamgate/rules/) decorated with `@register("url.my_rule", kind="url")`,
+give it an entry under `rules:` in `rules.yaml`, and add tests and a scenario.
+
+## Bench and tests
+
+[`scenarios/`](scenarios/) holds 17 hand-written **example** cases (11 scam, 6 legit), each with
+an expected decision.
+
+```console
+$ uv run scamgate bench
+...
+Scams: 11  caught: 11  missed: 0
+Legit: 6  false positives: 0
+Exact decision match: 17/17
+```
+
+This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
+runs the unit tests (49 passing). They use fixtures and never touch the network.
+
+## Limits
+
+- **Advisory only.** It warns the agent; it cannot block a payment or a page load. The agent
+  has to call it and respect the answer.
+- Heuristic rules miss scams that don't match them and sometimes flag legitimate actions.
+  Treat `allow` as "no known red flags", not "safe".
+- The domain-age check (`url.domain_age`) is a stub and off by default.
+- Known misses: `applebees.com` scores 60 (**ask**) because it contains "apple". A bank
+  transfer to a new payee with no other signals scores 20 (**allow**).
+- The brand list is small, and there's no full Public Suffix List handling yet.
+- Payment checks rely on what the agent passes in. scamgate doesn't verify IBANs or call your bank.
+
+**Disclaimer:** scamgate is not financial, legal or security advice, and it doesn't replace your
+bank's fraud controls, Verification of Payee, or human judgement.
 
 ## Roadmap
 
 - Domain age via RDAP, behind the existing `url.domain_age` hook
-- Optional local LLM check for manipulation and prompt injection in page or message text
-- Proper Public Suffix List handling and a bigger, configurable brand list
-- Many more scenarios, including real-world-inspired fraud typologies
-- HTTP transport for shared/homelab deployments
+- IBAN checksum validation and Verification of Payee integration
+- Optional local model as a tie-breaker on vague cases only, never overruling a hard rule
+- Bigger, configurable brand list and proper Public Suffix List handling
+- More scenarios based on real fraud typologies
 
-## Limits (please read)
+## Contributing
 
-scamgate is **advisory, not a guarantee.** It uses simple heuristics: it will miss scams that
-don't match its rules, and it will sometimes flag legitimate links or payments. It does not
-replace your bank's fraud controls, Verification of Payee, or human judgement, and it isn't
-financial or legal advice. Treat `allow` as "no known red flags", not "safe".
+Issues and pull requests are welcome, especially new rules, scenarios (scam and legit) and
+false-positive reports. Please include a test or scenario with each rule change, and keep checks
+offline and deterministic. See [`AGENTS.md`](AGENTS.md) for repo conventions.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Feed data is not covered: each feed keeps its own terms (see Sources above). OpenPhish is non-commercial use only.
+[MIT](LICENSE). Feed data is not included and stays under each provider's own terms.
