@@ -12,7 +12,7 @@ calls scamgate and gets back a verdict:
 Every verdict comes with a 0–100 risk score and plain-English reasons, each tied to a rule id.
 v1 is deterministic: local rules, no LLM, no network calls.
 
-> **Status:** early scaffold (v0.1). Private repo. MIT, see LICENSE. Feed data keeps its own terms (see Sources).
+> **Status:** early scaffold (v0.1). MIT licensed (see LICENSE). Feed data keeps its own terms (see Sources).
 
 ## Why
 
@@ -209,4 +209,4 @@ financial or legal advice. Treat `allow` as "no known red flags", not "safe".
 
 ## License
 
-TBD (private repo for now).
+MIT, see [LICENSE](LICENSE). Feed data is not covered: each feed keeps its own terms (see Sources above). OpenPhish is non-commercial use only.
