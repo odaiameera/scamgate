@@ -2,6 +2,8 @@
 
 A self-hosted scam check for AI agents: verify links and payments before the agent acts.
 
+**Website and docs:** https://odaiameera.github.io/scamgate/
+
 AI agents now click links and make payments for people, and scammers follow the money. Text
 planted in pages, listings or messages can steer an agent to a fake shop, a credential prompt or
 a "pay by bank transfer" request. Agent payment rails secure *the payment* (tokens, limits,
@@ -285,7 +287,7 @@ Exact decision match: 19/19
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (132 passing). They use fixtures and never touch the network.
+runs the unit tests (134 passing). They use fixtures and never touch the network.
 
 ## Limits
 

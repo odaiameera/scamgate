@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>scamgate: a checkpoint between your AI agent and a scam</title>
+<meta name="description" content="Self-hosted, offline allow/ask/deny checks for the links your AI agent opens and the payments it makes. Enforced by a hook the agent can't skip.">
+<meta name="theme-color" content="#0b0c0a">
+<meta property="og:title" content="scamgate">
+<meta property="og:description" content="Gate the click and the payment before the damage, not after. Offline, deterministic, open source.">
+<meta property="og:type" content="website">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/InstrumentSerif-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/IBMPlexSans-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="./" aria-label="scamgate home">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8 26V9M24 26V9" stroke="#ece8dc" stroke-width="2.4" stroke-linecap="round"/><path d="M5 15h22" stroke="#f0b44c" stroke-width="4" stroke-linecap="round"/><path d="M10 15l2.5-3M15 15l2.5-3M20 15l2.5-3" stroke="#0b0c0a" stroke-width="1.6"/></svg>
+      scamgate
+    </a>
+    <nav aria-label="Main">
+      <a href="#try">Try it</a>
+      <a href="#enforce">Enforcement</a>
+      <a href="#threats">Threat model</a>
+      <a href="docs.html">Docs</a>
+      <a class="gh" href="https://github.com/odaiameera/scamgate">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow"><b>Open source</b> · MIT · self-hosted</p>
+      <h1>A checkpoint between your agent and <em>the scam.</em></h1>
+      <p class="lede">AI agents now click links and pay for things. scamgate checks every link and payment
+        <strong>before</strong> the agent acts, and answers <span class="stamp allow">allow</span>
+        <span class="stamp ask">ask</span> or <span class="stamp deny">deny</span> with reasons a person can read.</p>
+      <div class="cmd" role="group" aria-label="Install command">
+        <code id="install-cmd">uv tool install git+https://github.com/odaiameera/scamgate</code>
+        <button class="copy" data-copy="#install-cmd" type="button">Copy</button>
+      </div>
+      <div class="actions">
+        <a class="btn primary" href="docs.html#quickstart">Read the docs <span class="arr">→</span></a>
+        <a class="btn" href="#try">See real verdicts</a>
+      </div>
+      <p class="facts">
+        <span>No network calls while checking</span>
+        <span>No LLM judging</span>
+        <span>Same input, same verdict</span>
+      </p>
+    </div>
+
+    <div class="gate" aria-labelledby="gate-title">
+      <div class="gate-bar" aria-hidden="true"></div>
+      <div class="gate-head">
+        <span class="live" id="gate-title"><i aria-hidden="true"></i>scamgate-hook · tool calls</span>
+        <button type="button" id="replay">Replay</button>
+      </div>
+      <ol id="gate-log" aria-live="polite"></ol>
+      <div class="gate-foot">Real <code>scamgate-hook</code> output. deny blocks the call, ask sends it to you, allow means the hook stays silent. Click a row for the reason.</div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="try">
+  <div class="wrap">
+    <div class="section-head">
+      <div><span class="num">01 / VERDICTS</span></div>
+      <div>
+        <h2>Every point has a reason.</h2>
+        <p>Rules add points. Under 25 is allow, 25 to 69 is ask, 70 or more is deny. Pick a case: these are
+          exactly what <code>scamgate</code> returns, generated from the code, not typed in.</p>
+      </div>
+    </div>
+
+    <p class="eyebrow scroll-hint">Swipe the cases →</p>
+    <div class="inspect">
+      <div class="cases" role="tablist" aria-label="Example checks" id="cases"></div>
+      <div class="verdict" role="tabpanel" id="verdict" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="enforce">
+  <div class="wrap">
+    <div class="section-head">
+      <div><span class="num">02 / ENFORCEMENT</span></div>
+      <div>
+        <h2>A check the agent can choose to skip isn't a check.</h2>
+        <p>Over MCP the agent decides whether to ask, and a prompt injection can tell it not to. The hook moves
+          the decision into the harness that runs the tools.</p>
+      </div>
+    </div>
+
+    <table class="compare">
+      <colgroup><col><col><col class="enf"></colgroup>
+      <thead>
+        <tr><th scope="col"><span class="eyebrow">Mode</span></th>
+          <th scope="col">MCP tools<small>check_url · check_payment</small></th>
+          <th scope="col">Hook<small>scamgate-hook</small></th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Who runs the check</th><td>The agent, if it remembers</td><td class="hl">The harness, before every gated tool call</td></tr>
+        <tr><th scope="row">On deny</th><td>A warning the agent should respect</td><td class="hl">The call is blocked</td></tr>
+        <tr><th scope="row">On ask</th><td>The agent should stop and ask you</td><td class="hl">Hermes sends it to you for approval; Claude Code prompts you</td></tr>
+        <tr><th scope="row">Destination unreadable</th><td>Not checked</td><td class="hl">You approve it (<code>curl "$URL"</code>, <code>requests.get(u)</code>)</td></tr>
+        <tr><th scope="row">On its own crash</th><td>Nothing happens</td><td class="hl">Fails closed: the call is blocked</td></tr>
+        <tr><th scope="row">Tampering</th><td>Nothing stops it</td><td class="hl">Blocks edits to its files, rules and hook config, and installed copies verify their own files</td></tr>
+        <tr><th scope="row">Works with</th><td>Any MCP client</td><td class="hl">Hermes shell hooks, Claude Code <code>PreToolUse</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section" id="threats">
+  <div class="wrap">
+    <div class="section-head">
+      <div><span class="num">03 / THREAT MODEL</span></div>
+      <div>
+        <h2>Yes, a hook can be scammed too.</h2>
+        <p>So here's how, and what scamgate does about each one. The honest limits are in the
+          <a href="docs.html#limits">docs</a>.</p>
+      </div>
+    </div>
+    <ol class="threats">
+      <li><div><h3>Going around it</h3><p>The agent fetches the page with curl, a script, or browser code instead of the browser tool.</p></div>
+        <div class="fix"><b>Counter</b><p>Every network-capable tool is gated. A call whose destination can't be read goes to you, not through.</p></div></li>
+      <li><div><h3>Lying about the payee</h3><p>The agent passes <code>is_new_payee=false</code> for someone you've never paid.</p></div>
+        <div class="fix"><b>Counter</b><p>Payee facts come from a local history of people you've actually paid, stored as salted hashes. A known name with a new account counts as changed bank details.</p></div></li>
+      <li><div><h3>Switching it off</h3><p>An injected instruction tells the agent to edit the rules, delete the log, revoke the hook or add an allow rule.</p></div>
+        <div class="fix"><b>Counter</b><p>The hook blocks writes to its own code, state and hook config, plus commands and code that would weaken it. Installed copies check their files on every call.</p></div></li>
+      <li><div><h3>Crashing it</h3><p>Malformed input or an exception, hoping the gate fails open.</p></div>
+        <div class="fix"><b>Counter</b><p>Fails closed: exit code 2 and a block message. Hermes' <code>fail_closed</code> covers timeouts too.</p></div></li>
+      <li><div><h3>Training it</h3><p>Hit the same harmless-looking site for a week until it gets allow-listed, then switch.</p></div>
+        <div class="fix"><b>Counter</b><p>Nothing is learned automatically. You promote rules yourself, and an allow waives one rule on one exact host, never feeds, your blocklist or intent checks.</p></div></li>
+      <li><div><h3>Wearing you down</h3><p>Enough harmless prompts and you start tapping yes.</p></div>
+        <div class="fix"><b>Counter</b><p>Every ask is logged with what you did. <code>scamgate review</code> shows what keeps tripping it, so repeats become rules instead of prompts.</p></div></li>
+    </ol>
+  </div>
+</section>
+
+<section class="section closing">
+  <div class="wrap">
+    <h2>Gate the click and the payment <em>before</em> the damage.</h2>
+    <div class="stack">
+      <div class="cmd" role="group" aria-label="Install command">
+        <code id="install-cmd-2">uv tool install git+https://github.com/odaiameera/scamgate</code>
+        <button class="copy" data-copy="#install-cmd-2" type="button">Copy</button>
+      </div>
+      <a class="btn primary" href="docs.html">Documentation <span class="arr">→</span></a>
+      <a class="btn" href="https://github.com/odaiameera/scamgate">Source on GitHub <span class="arr">↗</span></a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>scamgate is advisory. It can miss scams and flag legitimate actions. It isn't financial, legal or security
+      advice and doesn't replace your bank's fraud controls or your own judgement. MIT licensed. Feed data stays
+      under each provider's terms.</p>
+    <nav aria-label="Footer"><a href="docs.html">Docs</a><a href="https://github.com/odaiameera/scamgate">GitHub</a><a href="https://github.com/odaiameera/scamgate/issues">Issues</a></nav>
+  </div>
+</footer>
+
+<script src="assets/demo-data.js"></script>
+<script src="assets/site.js"></script>
+</body>
+</html>
