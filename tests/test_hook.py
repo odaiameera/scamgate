@@ -21,6 +21,11 @@ def claude(tool, tool_input, *, event="PreToolUse", tool_use_id="toolu_1"):
             "tool_use_id": tool_use_id}
 
 
+@pytest.fixture(autouse=True)
+def _feeds_cached(fresh_feeds):
+    """These tests are about hook behaviour with healthy feeds; no-feed behaviour is tested separately."""
+
+
 def out(payload):
     text, code = hook.run(payload)
     return json.loads(text), code
@@ -44,7 +49,7 @@ def test_hermes_safe_link_is_a_silent_noop():
 def test_hermes_ask_escalates_to_human_approval_with_narrow_rule_key():
     o, _ = out(hermes("browser_navigate", {"url": "https://someone@shop.example/basket"}))
     assert o["action"] == "approve"
-    assert o["rule_key"] == "scamgate:shop.example"
+    assert o["rule_key"].startswith("scamgate:shop.example:")
 
 
 def test_claude_deny_and_ask_use_permission_decision():

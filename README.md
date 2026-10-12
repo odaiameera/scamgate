@@ -143,43 +143,63 @@ it not to. The hook moves the check into the harness: the agent can't skip it.
 `scamgate-hook` (or `scamgate hook`) reads one hook event as JSON on stdin and writes a decision.
 It speaks Hermes shell hooks and Claude Code `PreToolUse` hooks.
 
-- **Links:** every URL in a web, browser, media, terminal or code tool call is checked.
-  `deny` blocks the call, `ask` sends it to you for approval.
-- **Opaque network calls** (`curl "$URL"`, `requests.get(u)`): scamgate can't see the
-  destination, so you approve it.
-- **Tampering:** blocks agent writes to scamgate's own code and state and to the hook config,
-  plus commands or code that revoke the hook, remove the server, promote rules, record payees
-  or call scamgate's state APIs directly.
-- **Fails closed:** bad input or an internal error blocks the call (exit 2).
+- **Links:** every URL in a web, browser, media, terminal, code or unknown MCP tool call is
+  checked, including disguised forms (`evilsh%6fp.com`, `http://3405803781`). `deny` blocks the
+  call, `ask` sends it to you for approval. One bad link in a batch blocks the whole batch.
+- **Hidden destinations:** a network step scamgate can't read goes to you, judged per command
+  (`curl https://example.org; curl "$URL"` still asks): variables, `$(…)`, string-built links,
+  `requests.get(open(…).read())`, package installs, `git fetch`.
+- **Running blind:** with no feeds cached, links go to you for approval (`SCAMGATE_NO_FEEDS=warn`
+  turns that into a warning). Stale feeds are mentioned in every ask and block.
+- **Tampering:** blocks agent writes to scamgate's own code, state and feed cache and to the hook
+  config, plus commands or code that revoke the hook, remove the server, promote rules, record
+  payees or call scamgate's state APIs directly.
+- **The agent's stated reason can only add risk.** It's scored with and without the reason, and
+  the higher score wins.
+- **Approvals stay narrow.** Hermes remembers "always" per `rule_key`; scamgate's keys include the
+  host and the rules that fired (or a hash of the hidden command), so one "always" can't
+  pre-approve other destinations. Still, pick "once" for asks you don't expect to repeat.
+- **Fails closed:** bad input, input over 2 MB, deep nesting or an internal error blocks the call
+  (exit 2).
 - **Never says "allow".** Silence means "no objection", so it can only tighten your agent's
   permissions, never loosen them.
 
-**Hermes** (`~/.hermes/config.yaml`). Hermes asks you to approve a new hook the first time it
-runs in an interactive session. Check it with `hermes hooks list` or `hermes hooks doctor`:
+**Hermes** (`~/.hermes/config.yaml`). Needs a Hermes build whose shell hooks understand
+`"action": "approve"` (older builds dropped it, turning every ask into a pass; fixed in issue
+#92553, Sep 2026). Hermes asks you to approve a new hook the first time it runs in an interactive
+session. Check it with `hermes hooks list` or `hermes hooks doctor`:
 
 ```yaml
 hooks:
   pre_tool_call:
-    - matcher: "browser_.*|web_extract|vision_analyze|video_analyze|terminal|execute_code|write_file|patch"
+    - matcher: ".*"          # scamgate passes non-network tools straight through
       command: "scamgate-hook"
       timeout: 15
       fail_closed: true
   post_tool_call:   # optional: records whether you approved each ask
-    - matcher: "browser_.*|web_extract|vision_analyze|video_analyze|terminal|execute_code"
+    - matcher: ".*"
       command: "scamgate-hook"
       timeout: 15
 ```
 
-**Claude Code** (`.claude/settings.json`):
+Note: `/yolo` or `approvals.mode: off` in Hermes auto-approves every scamgate **ask** (blocks still
+hold).
+
+**Claude Code** (`.claude/settings.json`). Needs Claude Code **v2.1.295+** for `onFailure`.
+Without it, a hook that crashes, times out or can't start lets the tool call through:
 
 ```json
 {"hooks": {
-  "PreToolUse":  [{"matcher": "WebFetch|Bash|Write|Edit|mcp__.*browser.*",
-                   "hooks": [{"type": "command", "command": "scamgate-hook", "timeout": 15}]}],
-  "PostToolUse": [{"matcher": "WebFetch|Bash|mcp__.*browser.*",
-                   "hooks": [{"type": "command", "command": "scamgate-hook"}]}]
+  "PreToolUse":  [{"matcher": ".*",
+                   "hooks": [{"type": "command", "command": "/absolute/path/to/scamgate-hook",
+                              "timeout": 15, "onFailure": "block"}]}],
+  "PostToolUse": [{"matcher": ".*",
+                   "hooks": [{"type": "command", "command": "/absolute/path/to/scamgate-hook"}]}]
 }}
 ```
+
+Use the absolute path (`uv tool dir --bin` shows it) so nothing earlier on `PATH` can stand in for
+the hook.
 
 Install a pinned copy for the hook (`uv tool install git+https://github.com/odaiameera/scamgate@<commit>`)
 rather than running from a source checkout: an installed copy checks its own files against the
@@ -192,8 +212,8 @@ the network, or scamgate's files, pass straight through.
 ### Ask log, review and promote
 
 Every `ask` and `deny` is logged to `$SCAMGATE_STATE_DIR` (default `~/.local/state/scamgate`)
-with redacted targets, the rules that fired, the score, the agent's stated reason (stored,
-marked **untrusted**, never used automatically) and whether you then let it run.
+with redacted targets, the rules that fired, the score, the agent's stated reason (stored for
+you to read and marked **untrusted**; in scoring it can only add risk) and whether you then let it run.
 
 ```bash
 scamgate review --days 7                       # which hosts keep tripping it, and what you did
@@ -287,7 +307,7 @@ Exact decision match: 19/19
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (134 passing). They use fixtures and never touch the network.
+runs the unit tests (211 passing). They use fixtures and never touch the network.
 
 ## Limits
 

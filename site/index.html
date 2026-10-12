@@ -111,7 +111,7 @@
         <tr><th scope="row">Who runs the check</th><td>The agent, if it remembers</td><td class="hl">The harness, before every gated tool call</td></tr>
         <tr><th scope="row">On deny</th><td>A warning the agent should respect</td><td class="hl">The call is blocked</td></tr>
         <tr><th scope="row">On ask</th><td>The agent should stop and ask you</td><td class="hl">Hermes sends it to you for approval; Claude Code prompts you</td></tr>
-        <tr><th scope="row">Destination unreadable</th><td>Not checked</td><td class="hl">You approve it (<code>curl "$URL"</code>, <code>requests.get(u)</code>)</td></tr>
+        <tr><th scope="row">Destination unreadable</th><td>Not checked</td><td class="hl">You approve it, judged per command (<code>curl "$URL"</code>, string-built links, package installs)</td></tr>
         <tr><th scope="row">On its own crash</th><td>Nothing happens</td><td class="hl">Fails closed: the call is blocked</td></tr>
         <tr><th scope="row">Tampering</th><td>Nothing stops it</td><td class="hl">Blocks edits to its files, rules and hook config, and installed copies verify their own files</td></tr>
         <tr><th scope="row">Works with</th><td>Any MCP client</td><td class="hl">Hermes shell hooks, Claude Code <code>PreToolUse</code></td></tr>
@@ -132,13 +132,13 @@
     </div>
     <ol class="threats">
       <li><div><h3>Going around it</h3><p>The agent fetches the page with curl, a script, or browser code instead of the browser tool.</p></div>
-        <div class="fix"><b>Counter</b><p>Every network-capable tool is gated. A call whose destination can't be read goes to you, not through.</p></div></li>
+        <div class="fix"><b>Counter</b><p>Every network-capable tool is gated, including unknown MCP tools, and each command step is judged on its own, so a harmless link can't hide a second fetch. Disguised hosts are decoded. A destination it can't read goes to you, not through.</p></div></li>
       <li><div><h3>Lying about the payee</h3><p>The agent passes <code>is_new_payee=false</code> for someone you've never paid.</p></div>
         <div class="fix"><b>Counter</b><p>Payee facts come from a local history of people you've actually paid, stored as salted hashes. A known name with a new account counts as changed bank details.</p></div></li>
       <li><div><h3>Switching it off</h3><p>An injected instruction tells the agent to edit the rules, delete the log, revoke the hook or add an allow rule.</p></div>
         <div class="fix"><b>Counter</b><p>The hook blocks writes to its own code, state and hook config, plus commands and code that would weaken it. Installed copies check their files on every call.</p></div></li>
       <li><div><h3>Crashing it</h3><p>Malformed input or an exception, hoping the gate fails open.</p></div>
-        <div class="fix"><b>Counter</b><p>Fails closed: exit code 2 and a block message. Hermes' <code>fail_closed</code> covers timeouts too.</p></div></li>
+        <div class="fix"><b>Counter</b><p>Fails closed: exit code 2 and a block message. Hermes' <code>fail_closed</code> and Claude Code's <code>onFailure: "block"</code> cover timeouts and crashes too.</p></div></li>
       <li><div><h3>Training it</h3><p>Hit the same harmless-looking site for a week until it gets allow-listed, then switch.</p></div>
         <div class="fix"><b>Counter</b><p>Nothing is learned automatically. You promote rules yourself, and an allow waives one rule on one exact host, never feeds, your blocklist or intent checks.</p></div></li>
       <li><div><h3>Wearing you down</h3><p>Enough harmless prompts and you start tapping yes.</p></div>
