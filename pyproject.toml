@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 scamgate = "scamgate.cli:app"
+scamgate-hook = "scamgate.hook_entry:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

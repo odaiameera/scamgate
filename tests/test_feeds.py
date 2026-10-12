@@ -114,3 +114,23 @@ def test_ignore_list_covers_subdomains(tmp_path):
     i = idx(d)
     for u in ("https://docs.google.com/forms/d/abc", "https://login.microsoftonline.com/"):
         assert "url.known_bad_feed" not in {r.rule_id for r in check_url(u, feeds=i).reasons}
+
+
+def test_hook_uses_lazy_lookup_not_full_index(cache, monkeypatch):
+    # A short-lived hook process must not load ~400k domains into dicts on every call.
+    monkeypatch.setenv(feeds.ENV_CACHE_DIR, str(cache))
+    feeds.load_index.cache_clear(); feeds._index_at.cache_clear()
+    lazy = feeds.LazyFeedIndex(cache)
+    assert bool(lazy)
+    for url in ["http://phish.test/paypal/signin.php?x=1", "http://bad-shop.test/", "http://deep.bad-shop.test/a",
+                "http://sub.phishy.test/x", "http://phishy.test/login", "https://www.example.com/"]:
+        full = idx(cache).lookup(url)
+        got = lazy.lookup(url)
+        assert (got is None) == (full is None), url
+        if full:
+            assert (got.kind, sorted(got.feeds), got.matched) == (full.kind, sorted(full.feeds), full.matched)
+    assert lazy.stale_feeds() == idx(cache).stale_feeds()
+
+
+def test_lazy_index_empty_cache_is_falsy(tmp_path):
+    assert not feeds.LazyFeedIndex(tmp_path)

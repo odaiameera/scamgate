@@ -70,6 +70,77 @@ def feeds_status(cache: Optional[Path] = typer.Option(None, "--cache-dir")) -> N
 
 
 @app.command()
+def hook() -> None:
+    """Enforcement hook: read a Hermes or Claude Code hook event (JSON) on stdin, print the decision."""
+    from scamgate import hook as hook_mod
+
+    raise typer.Exit(hook_mod.main())
+
+
+@app.command()
+def review(days: int = typer.Option(7, help="Look back this many days"),
+           limit: int = typer.Option(15, help="Show at most this many hosts")) -> None:
+    """Show which links keep tripping the gate, and what you did with each ask."""
+    from scamgate import asklog
+
+    rows = asklog.summarize(days=days)[:limit]
+    if not rows:
+        console.print(f"No asks or blocks in the last {days} days.")
+        return
+    table = Table(title=f"scamgate asks, last {days} days")
+    for col in ("host", "asks", "you approved", "you refused", "pending", "blocked", "top rules", "tools"):
+        table.add_column(col)
+    for r in rows:
+        table.add_row(r.host, str(r.asks), str(r.ran), str(r.not_run), str(r.pending), str(r.blocks),
+                      ", ".join(list(r.rules)[:2]), ", ".join(list(r.tools)[:2]))
+    console.print(table)
+    for r in rows[:5]:
+        if r.sample_reasons:
+            console.print(f"[dim]{r.host}: agent said (untrusted): "
+                          + " | ".join(f"\"{s}\"" for s in r.sample_reasons) + "[/dim]")
+    console.print("\nTurn a repeat ask into a rule: [bold]scamgate promote --host HOST --decision deny[/bold], or "
+                  "[bold]--decision allow --rule RULE_ID[/bold] (allow waives one rule on one exact host).")
+
+
+@app.command()
+def promote(host: str = typer.Option(..., help="Exact host, e.g. shop.example (no wildcards)"),
+            decision: str = typer.Option(..., help="allow or deny"),
+            rule: Optional[str] = typer.Option(None, help="For allow: the one rule to waive on this host"),
+            note: str = typer.Option("", help="Why (for your own records)")) -> None:
+    """Add a human-approved override. Asks for confirmation; agents are blocked from running this."""
+    from scamgate import overrides
+
+    if decision == "allow" and not rule:
+        console.print("An allow rule must name the one rule it waives: add --rule RULE_ID "
+                      "(see `scamgate review` for the rules that fired).")
+        raise typer.Exit(2)
+    if rule and rule in overrides.NEVER_WAIVED:
+        console.print(f"{rule} can't be waived: known-bad feeds, your blocklist and seed-phrase checks always apply.")
+        raise typer.Exit(2)
+    scope = (f"waive '{rule}' for {host} only (not its subdomains)" if decision == "allow"
+             else f"deny {host} and all its subdomains")
+    console.print(f"This will {scope}.")
+    if not typer.confirm("Add this rule?", default=False):
+        raise typer.Exit(1)
+    try:
+        rec = overrides.add(host, decision, rule=rule, note=note)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2)
+    console.print(f"Added: {rec['decision']} {rec['host']}" + (f" (rule {rec['rule']})" if rec["rule"] else ""))
+
+
+@app.command("record-payment")
+def record_payment(payee: str = typer.Option(..., help="Payee name"),
+                   account: str = typer.Option(..., help="IBAN, wallet or merchant id")) -> None:
+    """Record a payee you've actually paid, so future checks know them (stored as hashes only)."""
+    from scamgate import payees
+
+    payees.record(payee, account)
+    console.print(f"Recorded '{payee}'. Future payments to this exact account count as a known payee.")
+
+
+@app.command()
 def bench(
     directory: Path = typer.Option(Path("scenarios"), "--dir", help="Folder of scenario YAML files"),
     strict: bool = typer.Option(False, help="Exit non-zero if any decision differs from expected"),

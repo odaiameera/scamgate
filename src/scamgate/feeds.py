@@ -14,7 +14,6 @@ import io
 import json
 import os
 import time
-import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -166,6 +165,8 @@ class FeedResult:
 
 
 def _download(url: str, timeout: int = 120) -> str:
+    import urllib.request  # lazy: the hook never downloads, so it skips this import
+
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
         return resp.read().decode("utf-8", "replace")
@@ -277,6 +278,56 @@ def _read_set(p: Path) -> list[str]:
         return [x for x in p.read_text("utf-8").splitlines() if x]
     except OSError:
         return []
+
+
+class LazyFeedIndex:
+    """Same lookups as FeedIndex, without building dicts: searches the cached files directly.
+
+    For short-lived processes (the enforcement hook runs once per tool call), loading ~400k
+    domains into dicts costs ~0.6s; a substring search over the raw file costs a few ms.
+    """
+
+    def __init__(self, directory: Path | str | None = None):
+        self.dir = Path(directory) if directory else cache_dir()
+        self.meta = read_meta(self.dir)
+        self.fetched_at = {n: i.get("fetched_at", "") for n, i in self.meta.items() if n in FEEDS}
+        self._blobs: dict[str, bytes] = {}
+
+    def _blob(self, name: str, kind: str) -> bytes:
+        key = f"{name}.{kind}"
+        if key not in self._blobs:
+            try:
+                data = (self.dir / f"{name}.{kind}.txt").read_bytes().replace(bytes([13]), b"")
+            except OSError:
+                data = b""
+            self._blobs[key] = b"\n" + data + (b"" if data.endswith(b"\n") else b"\n")
+        return self._blobs[key]
+
+    def _has(self, name: str, kind: str, value: str) -> bool:
+        return b"\n" + value.encode() + b"\n" in self._blob(name, kind)
+
+    def lookup(self, url: str) -> FeedHit | None:
+        names = list(self.fetched_at)
+        if u := normalize_url(url):
+            if hit := [n for n in names if self._has(n, "urls", u)]:
+                return FeedHit("url", hit, u)
+        host = host_of(url)
+        if not host:
+            return None
+        if hit := [n for n in names if self._has(n, "hosts", host)]:
+            return FeedHit("host", hit, host)
+        listed = [n for n in names if FEEDS[n].hosts_are_listed_domains]
+        labels = host.split(".")
+        for i in range(1, len(labels) - 1):
+            parent = ".".join(labels[i:])
+            if hit := [n for n in listed if self._has(n, "hosts", parent)]:
+                return FeedHit("parent", hit, parent)
+        return None
+
+    stale_feeds = FeedIndex.stale_feeds
+
+    def __bool__(self) -> bool:
+        return any(len(self._blob(n, k)) > 2 for n in self.fetched_at for k in ("urls", "hosts"))
 
 
 @lru_cache(maxsize=4)
