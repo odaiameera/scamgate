@@ -434,7 +434,8 @@ window.SCAMGATE_DEMO = {
    "doc": "Payment method is hard or impossible to reverse.",
    "config": {
     "weight": 35,
-    "new_payee_transfer_weight": 20
+    "new_payee_transfer_weight": 25,
+    "new_payee_transfer_vop_match_weight": 10
    }
   },
   {

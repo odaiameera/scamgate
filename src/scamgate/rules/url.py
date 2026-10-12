@@ -195,20 +195,45 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
                     f"'{p.host}' is one character away from '{brand}' ('{tok}'), a common "
                     f"typosquat. The real site is {official_str}."
                 )
-        if len(brand) >= 5 and any(brand in v for v in normalize_variants(joined)):
-            if brand not in tokens:
-                return Hit(
-                    f"'{p.host}' embeds the brand '{brand}' in an unofficial domain. "
-                    f"The real site is {official_str}."
-                )
+        if len(brand) >= 5 and brand not in tokens:
+            affixes = set(lst(ctx.config, "brand_affixes"))
+            for tok in tokens + ([joined] if len(tokens) > 1 else []):
+                if any(_brand_with_affixes(v, brand, affixes) for v in normalize_variants(tok)):
+                    return Hit(
+                        f"'{p.host}' embeds the brand '{brand}' in an unofficial domain. "
+                        f"The real site is {official_str}."
+                    )
     return None
+
+
+def _brand_with_affixes(word: str, brand: str, affixes: set[str]) -> bool:
+    """True if `word` is the brand plus only scam-style padding ('appleid', 'securepaypal',
+    'amazon-refund'), not an unrelated word that happens to contain it ('applebees', 'revolution',
+    'pineapple')."""
+    start = word.find(brand)
+    while start != -1:
+        if _segments_into(word[:start], affixes) and _segments_into(word[start + len(brand):], affixes):
+            return True
+        start = word.find(brand, start + 1)
+    return False
+
+
+def _segments_into(rest: str, affixes: set[str]) -> bool:
+    ok = [True] + [False] * len(rest)
+    for i in range(1, len(rest) + 1):
+        for j in range(max(0, i - 14), i):
+            if ok[j] and (rest[j:i] in affixes or rest[j:i].isdigit()):
+                ok[i] = True
+                break
+    return ok[len(rest)]
 
 
 @register("url.ip_host", kind="url")
 def ip_host(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """Link points at a raw IP address instead of a domain name."""
     p = parse(check.url)
-    if _is_ip(p.host) and not ipaddress.ip_address(p.host.strip("[]")).is_loopback:
+    ip = ipaddress.ip_address(p.host.strip("[]")) if _is_ip(p.host) else None
+    if ip is not None and not (ip.is_loopback or ip.is_unspecified):
         return Hit(f"The link goes to a raw IP address ({p.host}); real shops and banks use domain names.")
     return None
 

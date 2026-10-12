@@ -35,7 +35,7 @@ def test_irreversible_method():
     assert "pay.irreversible_method" in ids(pay(method="gift_card"))
     v = pay(method="bank_transfer", is_new_payee=True)
     assert "pay.irreversible_method" in ids(v)
-    assert v.decision is Decision.allow  # on its own, a new-payee transfer is low risk
+    assert v.decision is Decision.ask  # a new-payee transfer with no name check asks (VoP match lowers it)
     assert "pay.irreversible_method" not in ids(pay(method="bank_transfer", is_new_payee=False))
     assert "pay.irreversible_method" not in ids(pay(method="card"))
 

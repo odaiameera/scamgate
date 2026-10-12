@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing)
+name: Legit restaurant whose name contains a brand
+kind: url
+label: legit
+expected: allow
+input:
+  url: https://www.applebees.com/en/menu
+  intent: check the menu prices
