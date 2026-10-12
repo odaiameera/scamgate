@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: Fake shop on an Amazon look-alike domain
+kind: url
+label: scam
+expected: deny
+input:
+  url: https://amaz0n-deals.shop/checkout?item=headphones
+  intent: buy noise-cancelling headphones under 150 euro

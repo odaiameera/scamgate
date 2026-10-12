@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing)
+name: Legit Revolut login when the task is logging in
+kind: url
+label: legit
+expected: allow
+input:
+  url: https://app.revolut.com/login
+  intent: log in to Revolut and download last month's statement

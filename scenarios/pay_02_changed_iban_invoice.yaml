@@ -1,0 +1,17 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: Invoice redirection - supplier "changed our bank details"
+kind: payment
+label: scam
+expected: deny
+input:
+  payee_name: Liffey Print Supplies
+  payee_account: IE64IRCE92050112345678
+  amount: 3870
+  currency: EUR
+  method: bank_transfer
+  is_new_payee: false
+  bank_details_changed: true
+  vop_result: no_match
+  context_text: >
+    Please note we have changed our bank details. Kindly pay invoice 4471
+    to the new account below.

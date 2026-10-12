@@ -1,0 +1,9 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+# Host is "pаypal.com" with a Cyrillic 'а', encoded as punycode.
+name: Punycode PayPal with a Cyrillic letter
+kind: url
+label: scam
+expected: deny
+input:
+  url: https://xn--pypal-4ve.com/
+  intent: check a refund

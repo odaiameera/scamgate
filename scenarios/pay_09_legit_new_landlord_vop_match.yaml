@@ -1,0 +1,15 @@
+# EXAMPLE scenario (made up for testing)
+name: Legit first rent transfer to a new landlord, VoP matched
+kind: payment
+label: legit
+expected: allow
+input:
+  payee_name: Siobhan Murphy
+  payee_account: IE12BOFI90001712345678
+  amount: 1450
+  currency: EUR
+  method: bank_transfer
+  is_new_payee: true
+  vop_result: match
+  budget: 1500
+  context_text: First month's rent as agreed in the lease.

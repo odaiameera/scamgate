@@ -1,0 +1,13 @@
+# EXAMPLE scenario (made up for testing)
+name: Legit small card purchase from a new shop
+kind: payment
+label: legit
+expected: allow
+input:
+  payee_name: Dublin Bookshop
+  payee_account: merchant-dublin-bookshop
+  amount: 24.99
+  currency: EUR
+  method: card
+  is_new_payee: true
+  budget: 40

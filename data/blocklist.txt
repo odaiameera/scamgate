@@ -1,0 +1,9 @@
+# scamgate local blocklist: one domain per line, '#' for comments.
+# A listed domain also blocks its subdomains.
+# These are made-up EXAMPLE entries on the reserved .example TLD, for tests and demos.
+# Pull real community feeds into data/feeds/ with scripts/fetch_feeds.py (not bundled).
+free-iphone-giveaway.example
+revolut-unlock-account.example
+aib-secure-verify.example
+crypto-doubler.example
+parcel-redelivery-fee.example

@@ -1,0 +1,15 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: Investment scam - guaranteed returns
+kind: payment
+label: scam
+expected: deny
+input:
+  payee_name: AlphaYield Capital
+  payee_account: "0x0000000000000000000000000000000000c0ffee"
+  amount: 2000
+  currency: USDC
+  method: crypto
+  is_new_payee: true
+  context_text: >
+    Our AI trading desk delivers guaranteed returns of 20% a month. Risk-free,
+    withdraw any time.

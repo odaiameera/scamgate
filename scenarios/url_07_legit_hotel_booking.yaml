@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing)
+name: Legit hotel booking on booking.com
+kind: url
+label: legit
+expected: allow
+input:
+  url: https://www.booking.com/hotel/ie/the-g.html?checkin=2026-11-06
+  intent: book a hotel room in Galway for two nights

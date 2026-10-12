@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: PayPal typosquat asking to log in during a purchase
+kind: url
+label: scam
+expected: deny
+input:
+  url: https://www.paypa1.com/signin?return=order-4471
+  intent: pay for a concert ticket order

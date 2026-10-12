@@ -1,0 +1,101 @@
+# scamgate rules config.
+# Each rule's weight is added to the risk score when it fires (score is capped at 100).
+# decision: score >= deny -> deny, score >= ask -> ask, otherwise allow.
+thresholds:
+  ask: 25
+  deny: 70
+
+rules:
+  # --- URL rules ---
+  url.blocklist:        { enabled: true,  weight: 100 }
+  url.lookalike_brand:  { enabled: true,  weight: 60, exact_token_weight: 45 }
+  url.ip_host:          { enabled: true,  weight: 40 }
+  url.punycode:         { enabled: true,  weight: 40 }
+  url.suspicious_tld:   { enabled: true,  weight: 20 }
+  url.intent_mismatch:  { enabled: true,  weight: 45, secret_weight: 80 }
+  url.domain_age:       { enabled: false, weight: 30, min_age_days: 30 }  # stub, needs a provider
+
+  # --- Payment rules ---
+  pay.new_payee_urgency:    { enabled: true, weight: 35 }
+  pay.bank_details_changed: { enabled: true, weight: 50 }
+  pay.irreversible_method:  { enabled: true, weight: 35, new_payee_transfer_weight: 20 }
+  pay.method_restricted:    { enabled: true, weight: 30 }
+  pay.over_budget:          { enabled: true, weight: 30 }
+  pay.pressure_phrases:     { enabled: true, weight: 35 }
+  pay.vop_mismatch:
+    enabled: true
+    weights: { no_match: 60, close_match: 25, unavailable: 10, match: 0 }
+
+lists:
+  brands:
+    paypal:  [paypal.com, paypal.me]
+    revolut: [revolut.com, revolut.me]
+    aib:     [aib.ie]
+    boi:     [bankofireland.com, boi.com]
+    stripe:  [stripe.com, stripe.network]
+    amazon:  [amazon.com, amazon.co.uk, amazon.ie, amazon.de, amazon.fr, amazon.es, amazon.it, amazon.nl, amazonaws.com]
+    apple:   [apple.com, icloud.com]
+
+  suspicious_tlds: [zip, mov, top, xyz, click, country, gq, tk, ml, cf, ga, rest, cam, icu, sbs, cfd, shop, buzz, lol]
+
+  # URL terms that ask for credentials or secrets.
+  credential_terms: [login, log-in, signin, sign-in, verify-account, account-verify, unlock, password, otp, 2fa]
+  secret_terms: [seed, seed-phrase, seedphrase, mnemonic, recovery-phrase, private-key, privatekey, connect-wallet, wallet-connect]
+  # If the agent's stated intent contains one of these, credential terms are expected.
+  credential_intent_terms: [log in, login, sign in, signin, account, password, my bank, banking]
+
+  urgency_terms:
+    - urgent
+    - urgently
+    - immediately
+    - asap
+    - right away
+    - today
+    - within the hour
+    - end of day
+    - before close of business
+    - deadline
+    - final notice
+    - last chance
+
+  pressure_phrases:
+    - act now
+    - keep this confidential
+    - keep this between us
+    - do not tell the bank
+    - don't tell the bank
+    - do not tell anyone
+    - don't tell anyone
+    - guaranteed returns
+    - guaranteed return
+    - risk-free
+    - double your money
+    - police will
+    - arrest warrant
+    - your account will be closed
+    - do not call
+    - i'm in meetings
+
+  bank_change_phrases:
+    - new bank details
+    - changed our bank
+    - updated bank details
+    - updated account details
+    - new account details
+    - changed bank account
+    - new iban
+
+  method_restriction_phrases:
+    - only accept crypto
+    - crypto only
+    - only accept usdt
+    - only accept bitcoin
+    - usdt only
+    - bitcoin only
+    - gift card
+    - gift cards
+    - no cards
+    - no card payments
+    - bank transfer only
+    - only accept bank transfer
+    - friends and family

@@ -1,0 +1,16 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: CEO fraud - urgent confidential transfer to a new payee
+kind: payment
+label: scam
+expected: deny
+input:
+  payee_name: Northbridge Consulting Ltd
+  payee_account: GB33BUKB20201555555555
+  amount: 24500
+  currency: EUR
+  method: bank_transfer
+  is_new_payee: true
+  vop_result: unavailable
+  context_text: >
+    Hi, it's Mark. I need this done today, it's urgent for the acquisition.
+    Keep this confidential for now, I'm in meetings so just email when it's sent.

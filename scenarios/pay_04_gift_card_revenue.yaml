@@ -1,0 +1,15 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: Impersonation - "Revenue" fine payable in gift cards
+kind: payment
+label: scam
+expected: deny
+input:
+  payee_name: Revenue Enforcement Unit
+  payee_account: steam-card-codes
+  amount: 600
+  currency: EUR
+  method: gift_card
+  is_new_payee: true
+  context_text: >
+    Pay the outstanding fine with Steam gift cards immediately or police will
+    be sent to your address. Do not tell anyone about this case.

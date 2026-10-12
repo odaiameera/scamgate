@@ -1,0 +1,13 @@
+# EXAMPLE scenario (made up for testing)
+name: Known shop, card, but over the budget the human set
+kind: payment
+label: legit
+expected: ask
+input:
+  payee_name: Harvey Norman
+  payee_account: merchant-hn-ie
+  amount: 189
+  currency: EUR
+  method: card
+  is_new_payee: false
+  budget: 150

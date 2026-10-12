@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: Bank-themed page on a raw IP address
+kind: url
+label: scam
+expected: ask
+input:
+  url: http://185.23.44.10/aib/login
+  intent: check my bank balance

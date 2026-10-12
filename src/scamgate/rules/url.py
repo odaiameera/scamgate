@@ -1,0 +1,222 @@
+"""URL rules. All local, no network calls."""
+
+from __future__ import annotations
+
+import ipaddress
+import re
+from dataclasses import dataclass
+from typing import Callable
+from urllib.parse import unquote, urlsplit
+
+from scamgate.config import lst
+from scamgate.models import UrlCheck
+from scamgate.registry import Hit, RuleContext, register
+
+# Multi-part public suffixes we care about. Not a full Public Suffix List (roadmap).
+_MULTI_SUFFIXES = {"co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "co.nz", "com.br", "co.jp"}
+
+# Common digit/letter swaps used in typosquats.
+_ASCII_SWAPS = {"0": "o", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
+# Common Cyrillic/Greek letters that look Latin.
+_UNICODE_SWAPS = {
+    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "х": "x", "у": "y", "і": "i",
+    "ј": "j", "ѕ": "s", "ԁ": "d", "ɩ": "l", "ο": "o", "α": "a", "ν": "v", "ρ": "p",
+}
+
+
+@dataclass
+class ParsedUrl:
+    host: str  # as given (lowercase, ascii / punycode form)
+    unicode_host: str  # punycode decoded where possible
+    registrable: str
+    tld: str
+    path_query: str
+
+
+def parse(url: str) -> ParsedUrl:
+    raw = url.strip()
+    if "://" not in raw:
+        raw = "http://" + raw
+    parts = urlsplit(raw)
+    host = (parts.hostname or "").lower().rstrip(".")
+    try:
+        unicode_host = host.encode("ascii").decode("idna") if "xn--" in host else host
+    except UnicodeError:
+        unicode_host = host
+    labels = host.split(".")
+    if len(labels) >= 3 and ".".join(labels[-2:]) in _MULTI_SUFFIXES:
+        registrable = ".".join(labels[-3:])
+    else:
+        registrable = ".".join(labels[-2:])
+    path_query = unquote(parts.path + ("?" + parts.query if parts.query else "")).lower()
+    return ParsedUrl(host, unicode_host, registrable, labels[-1] if labels else "", path_query)
+
+
+def _is_ip(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+        return True
+    except ValueError:
+        return False
+
+
+def levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def normalize_variants(token: str) -> set[str]:
+    """Undo common homoglyph tricks. '1' may stand for 'l' or 'i', so return variants."""
+    t = "".join(_UNICODE_SWAPS.get(c, c) for c in token.lower())
+    t = "".join(_ASCII_SWAPS.get(c, c) for c in t)
+    t = t.replace("rn", "m").replace("vv", "w")
+    return {t.replace("1", "l"), t.replace("1", "i")}
+
+
+def _on_domain(host: str, domain: str) -> bool:
+    return host == domain or host.endswith("." + domain)
+
+
+@register("url.blocklist", kind="url")
+def blocklist(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """Domain (or a parent domain) is on the local blocklist."""
+    p = parse(check.url)
+    labels = p.host.split(".")
+    for i in range(len(labels) - 1):
+        candidate = ".".join(labels[i:])
+        if candidate in ctx.blocklist:
+            return Hit(f"{candidate} is on the local scam blocklist.")
+    return None
+
+
+@register("url.lookalike_brand", kind="url")
+def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """Domain imitates a well-known brand (typosquat, homoglyph, or brand name on an unrelated domain)."""
+    p = parse(check.url)
+    brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
+    for official_list in brands.values():
+        if any(_on_domain(p.host, d) for d in official_list):
+            return None  # it's an official domain of some brand
+
+    host_wo_tld = p.unicode_host.rsplit(".", 1)[0] if "." in p.unicode_host else p.unicode_host
+    tokens = [t for t in re.split(r"[.\-_]", host_wo_tld) if t and t != "www"]
+    joined = "".join(tokens)
+    reg_label = p.unicode_host.split(".")[-2] if p.unicode_host.count(".") >= 1 else p.unicode_host
+    reg_tokens = set(re.split(r"[\-_]", reg_label))
+    exact_w = int(ctx.rule_config.get("exact_token_weight", 45))
+
+    for brand, official in brands.items():
+        official_str = official[0] if official else brand
+        for tok in tokens:
+            variants = normalize_variants(tok)
+            if tok == brand:
+                return Hit(
+                    f"'{p.host}' uses the name '{brand}' but is not an official {brand} domain "
+                    f"(expected {official_str}).",
+                    weight=exact_w,
+                )
+            if brand in variants:
+                return Hit(
+                    f"'{p.host}' disguises '{brand}' with look-alike characters "
+                    f"('{tok}'). The real site is {official_str}."
+                )
+            # Edit distance only on the registrable label, and only for longer brand names,
+            # to keep false positives like 'apply' ~ 'apple' down.
+            if (len(brand) >= 6 and tok in reg_tokens and len(tok) >= 5
+                    and any(levenshtein(v, brand) == 1 for v in variants)):
+                return Hit(
+                    f"'{p.host}' is one character away from '{brand}' ('{tok}'), a common "
+                    f"typosquat. The real site is {official_str}."
+                )
+        if len(brand) >= 5 and any(brand in v for v in normalize_variants(joined)):
+            if brand not in tokens:
+                return Hit(
+                    f"'{p.host}' embeds the brand '{brand}' in an unofficial domain. "
+                    f"The real site is {official_str}."
+                )
+    return None
+
+
+@register("url.ip_host", kind="url")
+def ip_host(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """Link points at a raw IP address instead of a domain name."""
+    p = parse(check.url)
+    if _is_ip(p.host):
+        return Hit(f"The link goes to a raw IP address ({p.host}); real shops and banks use domain names.")
+    return None
+
+
+@register("url.punycode", kind="url")
+def punycode(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """Host uses punycode / non-ASCII characters, which can hide look-alike letters."""
+    p = parse(check.url)
+    if "xn--" in p.host or any(ord(c) > 127 for c in p.host):
+        shown = f" (displays as '{p.unicode_host}')" if p.unicode_host != p.host else ""
+        return Hit(f"The domain uses encoded international characters{shown}, a common way to fake a familiar name.")
+    return None
+
+
+@register("url.suspicious_tld", kind="url")
+def suspicious_tld(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """Domain ends in a TLD that is cheap and commonly abused."""
+    p = parse(check.url)
+    if p.tld in set(lst(ctx.config, "suspicious_tlds")):
+        return Hit(f"The domain ends in '.{p.tld}', a cheap ending often used by throwaway scam sites.")
+    return None
+
+
+def _contains_term(haystack: str, terms: list[str]) -> str | None:
+    for t in sorted(terms, key=len, reverse=True):  # report the most specific term
+        if re.search(rf"(?<![a-z]){re.escape(t)}(?![a-z])", haystack):
+            return t
+    return None
+
+
+@register("url.intent_mismatch", kind="url")
+def intent_mismatch(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """Page asks for credentials or wallet secrets that the agent's task doesn't need."""
+    p = parse(check.url)
+    hay = (p.host + " " + p.path_query).replace("_", "-")
+    secret = _contains_term(hay, lst(ctx.config, "secret_terms"))
+    if secret:
+        return Hit(
+            f"The link asks for '{secret}'. No legitimate site needs a wallet seed phrase or private key; "
+            "anyone who has it can empty the wallet.",
+            weight=int(ctx.rule_config.get("secret_weight", 80)),
+        )
+    if not check.intent:
+        return None
+    intent = check.intent.lower()
+    cred = _contains_term(hay, lst(ctx.config, "credential_terms"))
+    if cred and not any(t in intent for t in lst(ctx.config, "credential_intent_terms")):
+        return Hit(
+            f"The task is '{check.intent}', but the link goes to a '{cred}' page. "
+            "A credential prompt the task doesn't need is a classic phishing step."
+        )
+    return None
+
+
+# Optional domain-age hook. Disabled by default. Set a provider to enable it, e.g. an
+# RDAP/WHOIS lookup that returns the domain's age in days (or None if unknown).
+DomainAgeProvider = Callable[[str], "int | None"]
+domain_age_provider: DomainAgeProvider | None = None
+
+
+@register("url.domain_age", kind="url")
+def domain_age(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """(Stub) Domain was registered very recently. Needs a domain_age_provider."""
+    if domain_age_provider is None:
+        return None
+    p = parse(check.url)
+    age = domain_age_provider(p.registrable)
+    min_days = int(ctx.rule_config.get("min_age_days", 30))
+    if age is not None and age < min_days:
+        return Hit(f"{p.registrable} was registered only {age} days ago; new domains are common for scam shops.")
+    return None

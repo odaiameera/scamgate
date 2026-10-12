@@ -1,0 +1,15 @@
+# EXAMPLE scenario (made up for testing)
+name: Legit monthly bill to a known payee
+kind: payment
+label: legit
+expected: allow
+input:
+  payee_name: Electric Ireland
+  payee_account: IE29AIBK93115212345678
+  amount: 85.40
+  currency: EUR
+  method: bank_transfer
+  is_new_payee: false
+  bank_details_changed: false
+  vop_result: match
+  budget: 120

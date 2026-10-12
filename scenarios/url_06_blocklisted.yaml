@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: Domain on the local blocklist
+kind: url
+label: scam
+expected: deny
+input:
+  url: https://claim.free-iphone-giveaway.example/winner
+  intent: read a news article

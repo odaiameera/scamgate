@@ -1,0 +1,15 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: Marketplace seller who only accepts crypto, big discount today
+kind: payment
+label: scam
+expected: deny
+input:
+  payee_name: TechDealsOutlet
+  payee_account: TQ4xExampleWalletAddress000000000
+  amount: 420
+  currency: USDT
+  method: crypto
+  is_new_payee: true
+  budget: 500
+  context_text: >
+    We only accept USDT, no cards. Price is 60% off today only.
