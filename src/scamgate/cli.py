@@ -110,6 +110,13 @@ def promote(host: str = typer.Option(..., help="Exact host, e.g. shop.example (n
     """Add a human-approved override. Asks for confirmation; agents are blocked from running this."""
     from scamgate import overrides
 
+    from scamgate import guard
+
+    try:
+        guard.require_human("Adding a scamgate override", interactive=lambda: overrides._interactive())
+    except PermissionError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(3)
     if decision == "allow" and not rule:
         console.print("An allow rule must name the one rule it waives: add --rule RULE_ID "
                       "(see `scamgate review` for the rules that fired).")
@@ -136,7 +143,11 @@ def record_payment(payee: str = typer.Option(..., help="Payee name"),
     """Record a payee you've actually paid, so future checks know them (stored as hashes only)."""
     from scamgate import payees
 
-    payees.record(payee, account)
+    try:
+        payees.record(payee, account)
+    except PermissionError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(3)
     console.print(f"Recorded '{payee}'. Future payments to this exact account count as a known payee.")
 
 

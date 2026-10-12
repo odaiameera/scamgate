@@ -42,6 +42,28 @@ def _is_editable(dist: metadata.Distribution) -> bool:
     return bool((direct.get("dir_info") or {}).get("editable"))
 
 
+_KNOWN_PTH = {"distutils-precedence.pth", "_virtualenv.pth"}
+
+
+def unexpected_pth(dirs: list[Path]) -> list[str]:
+    """.pth files no installed package owns. Python runs `import` lines in them at every start."""
+    out = []
+    for d in dirs:
+        d = Path(d)
+        if not d.is_dir():
+            continue
+        owned = set()
+        for rec in d.glob("*.dist-info/RECORD"):
+            for line in rec.read_text("utf-8", errors="replace").splitlines():
+                name = line.split(",", 1)[0].replace("\\", "/")
+                if name.endswith(".pth") and "/" not in name:
+                    owned.add(name)
+        for p in sorted(d.glob("*.pth")):
+            if p.name not in owned and p.name not in _KNOWN_PTH and not p.name.startswith("__editable__"):
+                out.append(p.name)
+    return out
+
+
 def check() -> tuple[bool, str]:
     try:
         dist = metadata.distribution("scamgate")
@@ -57,4 +79,7 @@ def check() -> tuple[bool, str]:
         entries.append((Path(f.locate()), f.hash.mode, f.hash.value))
     if not entries:
         return True, "dev (no RECORD hashes)"
-    return verify(entries)
+    ok, why = verify(entries)
+    if ok and (extra := unexpected_pth([Path(dist.locate_file(""))])):
+        return False, f"unknown startup file(s) next to scamgate: {', '.join(extra[:3])}"
+    return ok, why

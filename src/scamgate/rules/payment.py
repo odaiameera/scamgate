@@ -111,3 +111,12 @@ def vop_mismatch(check: PaymentCheck, ctx: RuleContext) -> Hit | None:
         VopResult.match: "Verification of Payee matched.",
     }[check.vop_result]
     return Hit(msg, weight=w) if w > 0 else None
+
+
+@register("pay.unbacked_known_claim", kind="payment")
+def unbacked_known_claim(check: PaymentCheck, ctx: RuleContext) -> Hit | None:
+    """The agent said this is a known payee, but there's no record of paying them."""
+    if check.agent_claim_unbacked:
+        return Hit("The agent described this as a payee you know, but you've never paid them from here. "
+                   "Scam messages often claim familiarity to skip checks.")
+    return None

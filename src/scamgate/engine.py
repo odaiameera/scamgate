@@ -102,14 +102,28 @@ def check_payment(check: PaymentCheck, *, config: dict[str, Any] | None = None,
 def _with_history(check: PaymentCheck) -> tuple[PaymentCheck, list[str]]:
     facts = payees_mod.lookup(check.payee_name, check.payee_account)
     warnings: list[str] = []
-    if facts.known_account:
+    claimed_known = False
+    if facts.history_broken:
+        new, changed = True, True
+        warnings.append("Your payee history can't be verified (its key or salt is missing or was changed), so "
+                        "every payee is treated as new with changed details. Check the scamgate state dir.")
+    elif facts.known_account:
         new, changed = False, bool(check.bank_details_changed)
     elif facts.name_seen_with_other_account:
         new, changed = False, True
         warnings.append(f"You've paid '{check.payee_name}' before, but never to this account.")
+    elif facts.near_name:
+        new, changed = True, True
+        warnings.append(f"'{check.payee_name}' looks like a payee you've paid before, but this name and account "
+                        "are new. Lookalike payee names are a common invoice-redirection trick.")
     else:
         new, changed = True, bool(check.bank_details_changed)
         if check.is_new_payee is False:
+            claimed_known = True
             warnings.append(f"The agent said '{check.payee_name}' is a known payee, but you've never paid them "
                             "from here (no record). Treating them as new.")
-    return check.model_copy(update={"is_new_payee": new, "bank_details_changed": changed}), warnings
+    if facts.account_under_other_name:
+        changed = True
+        warnings.append("You've paid this account before under a different name. Confirm who really owns it.")
+    upd = {"is_new_payee": new, "bank_details_changed": changed, "agent_claim_unbacked": claimed_known}
+    return check.model_copy(update=upd), warnings
