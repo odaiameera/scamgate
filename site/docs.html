@@ -117,6 +117,7 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
         decision on stdout. It speaks Hermes shell hooks and Claude Code <code>PreToolUse</code>/<code>PostToolUse</code>.</p>
       <dl class="dl">
         <dt>Links</dt><dd>Every URL in a web, browser, image/video, terminal, code or unknown MCP tool call is checked, including disguised forms (<code>evilsh%6fp.com</code>, <code>http://3405803781</code>). Deny blocks the call; ask sends it to you.</dd>
+        <dt>Hidden code</dt><dd>Code that's decoded or downloaded and then run (<code>… | base64 -d | bash</code>, <code>exec(b64decode(…))</code>, <code>curl … | sh</code>, <code>powershell -enc</code>) goes to you, network keyword or not.</dd>
         <dt>Hidden destinations</dt><dd>A network step scamgate can't read goes to you, judged per command, so a harmless link can't hide a second fetch: <code>curl "$URL"</code>, <code>$(…)</code>, string-built, base64/hex-decoded or reversed links, installs of named packages, <code>git clone</code>, new git remotes. In code, only a literal URL counts as readable.</dd>
         <dt>Quiet dev work</dt><dd>Installs from a lockfile, manifest or local path (<code>pip install -r requirements.txt</code>, <code>uv sync</code>, <code>npm ci</code>), <code>git push/pull/fetch</code> to remotes you already have, and commands that only read text pass silently. Any URL in them is still checked.</dd>
         <dt>Bulk</dt><dd>Any known-bad link blocks the whole call. Otherwise more than 20 links in one call goes to you.</dd>
@@ -295,8 +296,10 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
           with the hook it only sees tool calls: a redirect after the page opens, or a destination hidden in a
           variable, gets your approval rather than a check.</li>
         <li><strong>Heuristics miss things.</strong> Rules miss scams that don't match them and sometimes flag legitimate actions.</li>
-        <li><strong>Known misses:</strong> <code>applebees.com</code> scores 60 (ask) because it contains “apple”. A bank
-          transfer to a new payee with no other signals scores 20 (allow).</li>
+        <li><strong>Known trade-offs:</strong> a word one letter off a long brand (<code>stripes.com</code>) still asks. A bank
+          transfer to a new payee asks (25) unless Verification of Payee matched the name.</li>
+        <li><strong>Arguments, not behaviour.</strong> The hook reads tool arguments. A script or install hook that opens the
+          network on its own is invisible; code that's decoded or downloaded and then run asks.</li>
         <li>The domain-age rule is a stub and off. The brand list is small, and there's no full Public Suffix List handling yet.</li>
         <li>Payee history only knows payees you've recorded. scamgate doesn't verify IBANs or call your bank.</li>
         <li><strong>Not a sandbox.</strong> Tamper protection stops an agent's normal tools. Anything with full control of
@@ -323,7 +326,7 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
       <h2><span class="num">14</span>Contributing</h2>
       <p>Issues and pull requests are welcome, especially new rules, scenarios (scam and legit) and false-positive
         reports. Include a test or scenario with each rule change, and keep checks offline and deterministic.
-        <code>scamgate bench --strict</code> runs 19 hand-written example scenarios (13 scam, 6 legit): a regression
+        <code>scamgate bench --strict</code> runs 22 hand-written example scenarios (15 scam, 7 legit): a regression
         check, not a real-world detection rate.</p>
 <pre class="code" data-lang="shell"><code>git clone https://github.com/odaiameera/scamgate && cd scamgate
 uv sync

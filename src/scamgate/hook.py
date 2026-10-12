@@ -77,8 +77,9 @@ _NET_RE = re.compile(
     r"test-netconnection|tnc|"
     r"nslookup|dig|host|ping|traceroute|"
     r"invoke-webrequest|invoke-restmethod|iwr|irm|start-bitstransfer|start-process|certutil|bitsadmin|"
-    r"xdg-open|open|start|explorer|"
+    r"xdg-open|explorer|"
     r"pipx|uvx|npx|bunx)(?![\w.-])|"
+    r"(?:^|(?<=[;&|(]\s)|(?<=[;&|(]))\s*(?:open|start)\s+(?!-\w*\s*$)|"   # macOS open / Windows start as a command
     r"(?<![\w.-])(?:rsync|scp)\b[^\n;|&]*\s[\w.@-]+:(?![/\\])|"     # only with a host:path argument
     r"\bopenssl\s+s_client\b|"
     # Package managers: only the subcommands that download something.
@@ -302,8 +303,15 @@ def _plausible_host(host: str) -> bool:
     return tld in _GTLDS or (len(tld) == 2 and tld.isalpha() and tld not in _CODE_2)
 
 
+_SOCAT_ADDR = re.compile(r"(?i)\b(?:tcp[46]?|udp[46]?|openssl|ssl|tls|proxy|socks[45]a?)"
+                         r"(?:-connect)?:(localhost|(?:[a-z0-9-]+\.)+[a-z]{2,}|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\])"
+                         r"(?::(\d+))?")
+
+
 def _bare_hosts(segment: str) -> list[str]:
-    out = []
+    out = [f"https://{m.group(1)}" + (f":{m.group(2)}" if m.group(2) else "") for m in _SOCAT_ADDR.finditer(segment)]
+    if out:
+        return out
     for m in _HOST_TOKEN.finditer(segment):
         tok = m.group(1)
         host = tok.split("/", 1)[0].split(":", 1)[0]
@@ -351,6 +359,11 @@ def _local_install(seg: str) -> bool:
     if not toks:
         return False
     tool = toks[0].lower()
+    if tool in ("open", "start", "xdg-open", "explorer") and len(toks) >= 2:
+        # Opening a local file or app. A URL or a bare host is handled (and checked) as a link.
+        arg = toks[-1]
+        return ("://" not in arg and not _INDIRECT_RE.search(seg)
+                and (_NOT_A_HOST.search(arg) is not None or not _plausible_host(arg.split("/")[0])))
     if tool == "uv" and len(toks) > 1 and toks[1] == "pip":
         tool, toks = "pip", toks[1:]
     args = toks[1:]
@@ -380,15 +393,45 @@ def _local_install(seg: str) -> bool:
 
 
 def _is_local(url: str) -> bool:
-    return parse(url).host in _LOCAL_HOSTS
+    import ipaddress
+
+    h = parse(url).host.strip("[]")
+    if h in _LOCAL_HOSTS:
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_unspecified
 
 
 def _segments(code: str) -> list[str]:
     return [s.strip() for s in _SEGMENT_SPLIT.split(code) if s.strip()]
 
 
+# Code that is decoded or downloaded and then run: scamgate can't read what it does, so a human
+# approves it. Either half alone (decoding a file, running a script) is ordinary.
+_DECODE = r"""(?:base64\s+(?:-d|-D|--decode)\b|openssl\s+(?:base64|enc)\b[^|;&]*\s-d\b|xxd\s+-r|
+    \bb(?:64|32|16|85)decode|\ba85decode|\bfromhex\b|\bunhexlify|codecs\.decode|\bdecompress\(|rot13|
+    \batob\(|Buffer\.from\([^)]*['"](?:base64|hex)['"]|FromBase64String|\bcurl\b|\bwget\b|
+    \binvoke-webrequest\b|\biwr\b|\birm\b|downloadstring)"""
+_RUNNER = r"(?:ba|z|k|da|fi|c|tc)?sh|python[\d.]*|py|perl|ruby|node|php|pwsh|powershell|iex|invoke-expression"
+_DECODE_RUN = re.compile(
+    rf"""(?ix)
+      {_DECODE}[^\n;&]*\|\s*(?:sudo\s+)?(?:{_RUNNER})\b(?!\s+-?\w*\.\w)           # ... | base64 -d | bash
+    | (?:(?:{_RUNNER})\s+(?:-c\s+)?|\beval\s+|\bsource\s+|\.\s+)["']?(?:\$\(|<\(|`)[^\n]*{_DECODE}  # bash -c "$(... -d)"
+    | \b(?:exec|eval|compile)\s*\([^\n]*{_DECODE}                                  # exec(b64decode(..))
+    | new\s+Function\s*\([^\n]*{_DECODE}
+    | (?:iex|invoke-expression)\b[^\n]*{_DECODE}
+    | {_DECODE}[^\n]*\|\s*(?:iex|invoke-expression)\b
+    | (?:pwsh|powershell)(?:\.exe)?\b[^\n]*\s-(?:e|ec|enc|encodedcommand)\s+[A-Za-z0-9+/=]{{8,}}
+    """)
+
+
 def _scan_code(code: str, g: Gate) -> None:
     """URLs, bare hosts after network commands, and opaque network steps, judged per segment."""
+    if m := _DECODE_RUN.search(code):
+        g.opaque(f"code that is decoded or downloaded and then run ('{m.group(0).strip()[:50]}')")
     g.urls += _URL_RE.findall(code)
     if m := _DYNAMIC_URL_RE.search(code):
         g.opaque(f"a link built at run time ({m.group(0).strip()[:40]})")
@@ -402,6 +445,8 @@ def _scan_code(code: str, g: Gate) -> None:
         seg_urls = _URL_RE.findall(seg)
         bare = _bare_hosts(seg) if not seg_urls else []
         g.urls += bare
+        if bare and all(_is_local(u) for u in bare):
+            continue
         indirect = bool(_INDIRECT_RE.search(seg))
         if seg_urls and not indirect:
             continue

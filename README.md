@@ -146,6 +146,8 @@ It speaks Hermes shell hooks and Claude Code `PreToolUse` hooks.
 - **Links:** every URL in a web, browser, media, terminal, code or unknown MCP tool call is
   checked, including disguised forms (`evilsh%6fp.com`, `http://3405803781`). `deny` blocks the
   call, `ask` sends it to you for approval. One bad link in a batch blocks the whole batch.
+- **Hidden code:** code that's decoded or downloaded and then run (`… | base64 -d | bash`,
+  `exec(b64decode(…))`, `curl … | sh`, `powershell -enc`) goes to you, network keyword or not.
 - **Hidden destinations:** a network step scamgate can't read goes to you, judged per command
   (`curl https://example.org; curl "$URL"` still asks): variables, `$(…)`, string-built,
   base64/hex-decoded or reversed links, `requests.get(open(…).read())`, installs of named
@@ -312,19 +314,19 @@ give it an entry under `rules:` in `rules.yaml`, and add tests and a scenario.
 
 ## Bench and tests
 
-[`scenarios/`](scenarios/) holds 19 hand-written **example** cases (13 scam, 6 legit), each with
+[`scenarios/`](scenarios/) holds 22 hand-written **example** cases (15 scam, 7 legit), each with
 an expected decision.
 
 ```console
 $ uv run scamgate bench
 ...
-Scams: 13  caught: 13  missed: 0
-Legit: 6  false positives: 0
-Exact decision match: 19/19
+Scams: 15  caught: 15  missed: 0
+Legit: 7  false positives: 0
+Exact decision match: 22/22
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (376 passing). They use fixtures and never touch the network.
+runs the unit tests (CI runs them on Python 3.11–3.13). They use fixtures and never touch the network.
 
 ## Limits
 
@@ -335,8 +337,13 @@ runs the unit tests (376 passing). They use fixtures and never touch the network
 - Heuristic rules miss scams that don't match them and sometimes flag legitimate actions.
   Treat `allow` as "no known red flags", not "safe".
 - The domain-age check (`url.domain_age`) is a stub and off by default.
-- Known misses: `applebees.com` scores 60 (**ask**) because it contains "apple". A bank
-  transfer to a new payee with no other signals scores 20 (**allow**).
+- Known trade-offs: a word one letter off a long brand (`stripes.com` vs `stripe`) still asks. A
+  bank transfer to a new payee **asks** (25) unless your bank's Verification of Payee matched the
+  name; card payments to new payees don't.
+- The hook sees a tool call's arguments, not what a program does once it runs: a local script,
+  binary or package install script that opens the network is invisible unless the command line
+  shows it. Code that is decoded or downloaded and then run (`base64 -d | bash`,
+  `exec(b64decode(…))`, `powershell -enc`) asks.
 - The brand list is small, and there's no full Public Suffix List handling yet.
 - Payee history only knows payees you've recorded with `record-payment`. scamgate doesn't
   verify IBANs or call your bank.

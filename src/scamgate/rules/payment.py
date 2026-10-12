@@ -55,9 +55,14 @@ def irreversible_method(check: PaymentCheck, ctx: RuleContext) -> Hit | None:
         label = "crypto" if check.method is PaymentMethod.crypto else "gift cards"
         return Hit(f"Paying by {label} is effectively irreversible, and it's the method scammers ask for most.")
     if check.method is PaymentMethod.bank_transfer and check.is_new_payee:
+        if check.vop_result is not None and check.vop_result.value == "match":
+            return Hit("A bank transfer to a new payee is hard to recall once sent. Your bank confirmed the "
+                       "name matches the account, which helps.",
+                       weight=int(ctx.rule_config.get("new_payee_transfer_vop_match_weight", 10)))
         return Hit(
-            "A bank transfer to a new payee is hard to recall once sent.",
-            weight=int(ctx.rule_config.get("new_payee_transfer_weight", 20)),
+            "A bank transfer to a new payee is hard to recall once sent. Check the name matches the account "
+            "with your bank's Verification of Payee, or confirm the details by phone, before sending.",
+            weight=int(ctx.rule_config.get("new_payee_transfer_weight", 25)),
         )
     return None
 

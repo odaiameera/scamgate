@@ -24,7 +24,7 @@ rules:
   # --- Payment rules ---
   pay.new_payee_urgency:    { enabled: true, weight: 35 }
   pay.bank_details_changed: { enabled: true, weight: 50 }
-  pay.irreversible_method:  { enabled: true, weight: 35, new_payee_transfer_weight: 20 }
+  pay.irreversible_method:  { enabled: true, weight: 35, new_payee_transfer_weight: 25, new_payee_transfer_vop_match_weight: 10 }
   pay.method_restricted:    { enabled: true, weight: 30 }
   pay.over_budget:          { enabled: true, weight: 30 }
   pay.pressure_phrases:     { enabled: true, weight: 35 }
@@ -42,6 +42,18 @@ lists:
     stripe:  [stripe.com, stripe.network]
     amazon:  [amazon.com, amazon.co.uk, amazon.ie, amazon.de, amazon.fr, amazon.es, amazon.it, amazon.nl, amazonaws.com]
     apple:   [apple.com, icloud.com]
+
+  # Padding scammers put around a brand name ('appleid', 'securepaypal', 'amazonrefund').
+  # A brand inside any other word ('applebees', 'revolution', 'pineapple') isn't flagged.
+  brand_affixes: [id, login, logon, signin, sign, secure, security, safe, verify, verification, verified, validate,
+                  support, help, helpdesk, desk, service, services, svc, account, accounts, acct, update, updates,
+                  billing, bill, pay, payment, payments, my, online, app, apps, web, portal, auth, alert, alerts,
+                  notice, center, centre, team, care, customer, customers, client, refund, refunds, unlock, unlocks,
+                  recovery, recover, restore, official, store, shop, gift, card, cards, wallet, connect, check, checks,
+                  confirm, mail, cloud, user, users, member, members, uk, ie, us, eu, de, global, inc, ltd, get, go,
+                  www, login, access, hub, info, dept, claim, claims, prize, reward, rewards, bonus, invoice, order,
+                  orders, delivery, track, tracking, case, review, reviews, limited, limit, suspend, suspended,
+                  locked, lock, block, blocked, protect, protection, fraud, team, official, net, com, now, here, x]
 
   # Big shared platforms (file hosts, form builders, shorteners, identity providers).
   # Feeds list single bad pages on these, so a host/domain hit here is ignored; only an

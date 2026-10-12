@@ -1,0 +1,13 @@
+# EXAMPLE scenario (made up for testing)
+name: Invoice paid by transfer to a payee never paid before, no name check
+kind: payment
+label: scam
+expected: ask
+input:
+  payee_name: Northside Supplies
+  payee_account: IE64BOFI90583812345678
+  amount: 2400
+  currency: EUR
+  method: bank_transfer
+  is_new_payee: true
+  context_text: Please find attached invoice 4471 for this month's order.
