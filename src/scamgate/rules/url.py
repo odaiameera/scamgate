@@ -14,7 +14,24 @@ from scamgate.models import UrlCheck
 from scamgate.registry import Hit, RuleContext, register
 
 # Multi-part public suffixes we care about. Not a full Public Suffix List (roadmap).
-_MULTI_SUFFIXES = {"co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "co.nz", "com.br", "co.jp"}
+# Curated, not the full PSL: country second-level domains and big shared-hosting suffixes, so
+# 'evil.github.io' and 'shop.co.uk' get the right registrable name.
+_MULTI_SUFFIXES = {
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk", "nhs.uk", "police.uk", "sch.uk",
+    "gov.ie", "com.au", "net.au", "org.au", "gov.au", "edu.au", "co.nz", "org.nz", "govt.nz", "com.br", "net.br",
+    "gov.br", "co.jp", "ne.jp", "or.jp", "ac.jp", "go.jp", "co.in", "net.in", "org.in", "gov.in", "co.za", "org.za",
+    "gov.za", "com.mx", "gob.mx", "com.ar", "com.co", "com.tr", "gov.tr", "com.sg", "gov.sg", "com.my", "com.hk",
+    "com.tw", "com.cn", "gov.cn", "co.kr", "or.kr", "co.il", "org.il", "gov.il", "com.sa", "gov.sa", "com.eg",
+    "com.pk", "gov.pk", "com.ng", "gov.ng", "co.ke", "com.ua", "gov.ua", "com.pl", "co.id", "go.id", "com.ph",
+    "gov.ph", "com.vn", "co.th", "go.th", "ac.th", "com.pe", "com.ve", "com.ec", "com.uy", "com.bd", "com.np",
+    "com.jo", "gov.jo", "edu.jo", "com.lb", "com.qa", "gov.qa", "co.ae", "gov.ae", "ac.ae", "com.kw", "com.om",
+    "com.bh", "com.ps", "gov.ps",
+    "github.io", "gitlab.io", "pages.dev", "workers.dev", "vercel.app", "netlify.app", "herokuapp.com",
+    "firebaseapp.com", "web.app", "appspot.com", "blogspot.com", "azurewebsites.net", "cloudfront.net",
+    "s3.amazonaws.com", "glitch.me", "repl.co", "replit.app", "onrender.com", "fly.dev", "wixsite.com",
+    "weebly.com", "square.site", "myshopify.com", "webflow.io", "framer.website", "ngrok.io", "ngrok-free.app",
+    "trycloudflare.com", "duckdns.org", "no-ip.org", "000webhostapp.com", "carrd.co", "notion.site",
+}
 
 # Common digit/letter swaps used in typosquats.
 _ASCII_SWAPS = {"0": "o", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
@@ -190,6 +207,7 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
             # Edit distance only on the registrable label, and only for longer brand names,
             # to keep false positives like 'apply' ~ 'apple' down.
             if (len(brand) >= 6 and tok in reg_tokens and len(tok) >= 5
+                    and tok not in lst(ctx.config, "brand_typo_exempt")
                     and any(levenshtein(v, brand) == 1 for v in variants)):
                 return Hit(
                     f"'{p.host}' is one character away from '{brand}' ('{tok}'), a common "
@@ -334,19 +352,25 @@ def credential_page(check: UrlCheck, ctx: RuleContext) -> Hit | None:
                "recognises. Only sign in if you went there on purpose.")
 
 
-# Optional domain-age hook. Disabled by default. Set a provider to enable it, e.g. an
-# RDAP/WHOIS lookup that returns the domain's age in days (or None if unknown).
+# Domain age. The default provider is RDAP (scamgate.domainage), which does nothing unless you
+# opt in with SCAMGATE_RDAP=cache|live. Tests or embedders can swap in their own provider.
 DomainAgeProvider = Callable[[str], "int | None"]
 domain_age_provider: DomainAgeProvider | None = None
 
 
 @register("url.domain_age", kind="url")
 def domain_age(check: UrlCheck, ctx: RuleContext) -> Hit | None:
-    """(Stub) Domain was registered very recently. Needs a domain_age_provider."""
-    if domain_age_provider is None:
-        return None
+    """Domain was registered very recently (RDAP, opt-in)."""
     p = parse(check.url)
-    age = domain_age_provider(p.registrable)
+    if not p.registrable or _is_ip(p.host) or p.host in ("localhost",) or _is_official_brand_host(p.host, ctx) \
+            or any(_on_domain(p.host, d) for d in lst(ctx.config, "feed_host_ignore")):
+        return None
+    if domain_age_provider is not None:
+        age = domain_age_provider(p.registrable)
+    else:
+        from scamgate import domainage
+
+        age = domainage.lookup(p.registrable)
     min_days = int(ctx.rule_config.get("min_age_days", 30))
     if age is not None and age < min_days:
         return Hit(f"{p.registrable} was registered only {age} days ago; new domains are common for scam shops.")

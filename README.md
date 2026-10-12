@@ -40,8 +40,8 @@ cd scamgate
 uv sync
 uv run scamgate update-feeds      # download the known-bad-link feeds into ~/.cache/scamgate
 
-# or with pip
-pip install "git+https://github.com/odaiameera/scamgate.git"
+# or with pip, pinned to a release
+pip install "git+https://github.com/odaiameera/scamgate.git@v0.2.0"
 scamgate update-feeds
 ```
 
@@ -146,6 +146,12 @@ It speaks Hermes shell hooks and Claude Code `PreToolUse` hooks.
 - **Links:** every URL in a web, browser, media, terminal, code or unknown MCP tool call is
   checked, including disguised forms (`evilsh%6fp.com`, `http://3405803781`). `deny` blocks the
   call, `ask` sends it to you for approval. One bad link in a batch blocks the whole batch.
+- **Payments:** money-moving tool calls (wallet, banking or payments MCP tools, or any tool whose
+  arguments carry an amount and an IBAN, wallet or account) get the same check as
+  `check_payment`, with your payee history, whatever the agent claims. `deny` blocks, `ask` sends
+  it to you. A payment whose payee or amount can't be read, crypto CLIs (`cast send`,
+  `bitcoin-cli sendtoaddress`, `solana transfer`…) and write calls to payment APIs (Stripe,
+  PayPal, Wise, Revolut Business…) go to you. Each approval covers one account and amount.
 - **Hidden code:** code that's decoded or downloaded and then run (`… | base64 -d | bash`,
   `exec(b64decode(…))`, `curl … | sh`, `powershell -enc`) goes to you, network keyword or not.
 - **Hidden destinations:** a network step scamgate can't read goes to you, judged per command
@@ -208,7 +214,7 @@ Without it, a hook that crashes, times out or can't start lets the tool call thr
 Use the absolute path (`uv tool dir --bin` shows it) so nothing earlier on `PATH` can stand in for
 the hook.
 
-Install a pinned copy for the hook (`uv tool install git+https://github.com/odaiameera/scamgate@<commit>`)
+Install a pinned copy for the hook (`uv tool install git+https://github.com/odaiameera/scamgate@v0.2.0`, or a commit hash)
 rather than running from a source checkout: an installed copy checks its own files against the
 hashes recorded at install time on every call, and blocks everything if they changed. A source
 checkout has nothing to check against.
@@ -255,6 +261,21 @@ with changed details, rather than silently forgetting everyone.
 ```bash
 scamgate record-payment --payee "Acme Ltd" --account IE29AIBK93115212345678
 ```
+
+### Domain age (opt-in)
+
+New domains are a strong scam-shop signal (`url.domain_age`, 30 points under 30 days old). Looking
+one up asks the domain's registry over RDAP, which tells the registry which site you're checking,
+so it's off unless you choose:
+
+| `SCAMGATE_RDAP` | What happens |
+| --- | --- |
+| `off` (default) | No lookups. The rule never fires. |
+| `cache` | Uses ages already cached; never goes online. Fill the cache with `scamgate domain-age HOST`. |
+| `live` | Looks up unknown domains (3 s timeout) and caches the answer for a year (failures for 7 days). |
+
+Official brand domains, shared platforms, IPs and localhost are never looked up. Registries come
+from IANA's RDAP bootstrap list, cached in the feed cache dir.
 
 ## Known-bad-link feeds
 
@@ -336,7 +357,8 @@ runs the unit tests (CI runs them on Python 3.11–3.13). They use fixtures and 
   rather than a check.
 - Heuristic rules miss scams that don't match them and sometimes flag legitimate actions.
   Treat `allow` as "no known red flags", not "safe".
-- The domain-age check (`url.domain_age`) is a stub and off by default.
+- Domain age needs opting in (`SCAMGATE_RDAP=cache` or `live`, see below), because a live
+  lookup tells the domain's registry which site you're checking.
 - Known trade-offs: a word one letter off a long brand (`stripes.com` vs `stripe`) still asks. A
   bank transfer to a new payee **asks** (25) unless your bank's Verification of Payee matched the
   name; card payments to new payees don't.
@@ -344,7 +366,9 @@ runs the unit tests (CI runs them on Python 3.11–3.13). They use fixtures and 
   binary or package install script that opens the network is invisible unless the command line
   shows it. Code that is decoded or downloaded and then run (`base64 -d | bash`,
   `exec(b64decode(…))`, `powershell -enc`) asks.
-- The brand list is small, and there's no full Public Suffix List handling yet.
+- The brand pack covers about 50 of the most-phished brands plus Irish/UK banks, couriers and
+  services; add your own under `lists.brands`. Registrable domains use a curated suffix list
+  (country second-levels and shared hosts like `github.io`, `vercel.app`), not the full PSL.
 - Payee history only knows payees you've recorded with `record-payment`. scamgate doesn't
   verify IBANs or call your bank.
 - Tamper protection stops an agent's normal tools: writes to scamgate, its state and feed
@@ -363,11 +387,10 @@ bank's fraud controls, Verification of Payee, or human judgement.
 
 ## Roadmap
 
-- Domain age via RDAP, behind the existing `url.domain_age` hook
 - IBAN checksum validation and Verification of Payee integration
 - Redirect after-check: re-check the page a browser actually landed on
 - Optional local model as a tie-breaker on vague cases only, never overruling a hard rule
-- Bigger, configurable brand list and proper Public Suffix List handling
+- Full Public Suffix List (optional, cached)
 - More scenarios based on real fraud typologies
 
 ## Contributing

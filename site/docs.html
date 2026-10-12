@@ -62,10 +62,10 @@
       <h2><span class="num">01</span>Quickstart</h2>
       <p>Requires Python 3.11+. Installing with <code>uv tool</code> gives you two commands:
         <code>scamgate</code> and <code>scamgate-hook</code>.</p>
-<pre class="code" data-lang="shell"><code>uv tool install git+https://github.com/odaiameera/scamgate
+<pre class="code" data-lang="shell"><code>uv tool install git+https://github.com/odaiameera/scamgate@v0.2.0
 scamgate update-feeds        <span class="c"># download known-bad-link feeds (the only command that goes online)</span>
 scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pre>
-      <p>Or with pip: <code>pip install "git+https://github.com/odaiameera/scamgate.git"</code>. To hack on it,
+      <p>Or with pip: <code>pip install "git+https://github.com/odaiameera/scamgate.git@v0.2.0"</code>. To hack on it,
         clone the repo and run <code>uv sync</code>, then prefix commands with <code>uv run</code>.</p>
       <p>The verdict is JSON: a <code>decision</code>, a <code>risk_score</code>, every <code>reason</code> with its
         points, a one-line <code>summary</code>, any <code>warnings</code> (for example, no feeds cached yet) and an
@@ -117,6 +117,7 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
         decision on stdout. It speaks Hermes shell hooks and Claude Code <code>PreToolUse</code>/<code>PostToolUse</code>.</p>
       <dl class="dl">
         <dt>Links</dt><dd>Every URL in a web, browser, image/video, terminal, code or unknown MCP tool call is checked, including disguised forms (<code>evilsh%6fp.com</code>, <code>http://3405803781</code>). Deny blocks the call; ask sends it to you.</dd>
+        <dt>Payments</dt><dd>Money-moving tool calls (wallet, banking or payments MCP tools, or any tool whose arguments carry an amount and an IBAN, wallet or account) get the same check as <code>check_payment</code>, with your payee history. A payee or amount it can't read, crypto CLIs (<code>cast send</code>, <code>bitcoin-cli sendtoaddress</code>) and write calls to payment APIs (Stripe, PayPal, Wise…) go to you.</dd>
         <dt>Hidden code</dt><dd>Code that's decoded or downloaded and then run (<code>… | base64 -d | bash</code>, <code>exec(b64decode(…))</code>, <code>curl … | sh</code>, <code>powershell -enc</code>) goes to you, network keyword or not.</dd>
         <dt>Hidden destinations</dt><dd>A network step scamgate can't read goes to you, judged per command, so a harmless link can't hide a second fetch: <code>curl "$URL"</code>, <code>$(…)</code>, string-built, base64/hex-decoded or reversed links, installs of named packages, <code>git clone</code>, new git remotes. In code, only a literal URL counts as readable.</dd>
         <dt>Quiet dev work</dt><dd>Installs from a lockfile, manifest or local path (<code>pip install -r requirements.txt</code>, <code>uv sync</code>, <code>npm ci</code>), <code>git push/pull/fetch</code> to remotes you already have, and commands that only read text pass silently. Any URL in them is still checked.</dd>
@@ -159,7 +160,7 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
                    <span class="k">"hooks"</span>: [{<span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"/absolute/path/to/scamgate-hook"</span>}]}]
 }}</code></pre>
       <p>Use the absolute path (<code>uv tool dir --bin</code> shows it) so nothing earlier on <code>PATH</code> can stand in for the hook.</p>
-      <div class="note"><b>Install a pinned copy</b>Run the hook from <code>uv tool install git+https://github.com/odaiameera/scamgate@&lt;commit&gt;</code>,
+      <div class="note"><b>Install a pinned copy</b>Run the hook from <code>uv tool install git+https://github.com/odaiameera/scamgate@v0.2.0</code>,
         not a source checkout. An installed copy checks its own files against the hashes recorded at install time on
         every call, and blocks everything if they changed. A source checkout has nothing to check against.</div>
       <p>Each gated call costs one process start, about 0.7 s on Windows. Calls that don't touch the network or
@@ -249,6 +250,7 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
           <tr><td><code>SCAMGATE_STATE_DIR</code></td><td>Ask log, overrides, payee history. Default <code>$XDG_STATE_HOME/scamgate</code>, else <code>~/.local/state/scamgate</code></td></tr>
           <tr><td><code>SCAMGATE_URLHAUS_AUTH_KEY</code></td><td>Enables the URLhaus feed</td></tr>
           <tr><td><code>SCAMGATE_PROTECT</code></td><td>Extra paths the hook should protect from agent writes (path-separator list)</td></tr>
+          <tr><td><code>SCAMGATE_RDAP</code></td><td><code>off</code> (default), <code>cache</code> (cached domain ages only) or <code>live</code> (look up new domains over RDAP and cache them)</td></tr>
           <tr><td><code>SCAMGATE_NO_FEEDS</code></td><td><code>ask</code> (default): with no feeds cached, links go to you. <code>warn</code>: only mention it</td></tr>
         </tbody>
       </table>
@@ -300,7 +302,7 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
           transfer to a new payee asks (25) unless Verification of Payee matched the name.</li>
         <li><strong>Arguments, not behaviour.</strong> The hook reads tool arguments. A script or install hook that opens the
           network on its own is invisible; code that's decoded or downloaded and then run asks.</li>
-        <li>The domain-age rule is a stub and off. The brand list is small, and there's no full Public Suffix List handling yet.</li>
+        <li>Domain age needs opting in (<code>SCAMGATE_RDAP=cache|live</code>). The brand pack covers about 50 brands; the suffix list is curated, not the full PSL.</li>
         <li>Payee history only knows payees you've recorded. scamgate doesn't verify IBANs or call your bank.</li>
         <li><strong>Not a sandbox.</strong> Tamper protection stops an agent's normal tools. Anything with full control of
           your account can still change scamgate's files, and code can be written to slip past pattern matching. For
@@ -314,11 +316,10 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
     <section id="roadmap">
       <h2><span class="num">13</span>Roadmap</h2>
       <ul>
-        <li>Domain age via RDAP, behind the existing <code>url.domain_age</code> rule</li>
         <li>IBAN checksum validation and Verification of Payee integration</li>
         <li>Redirect after-check: re-check the page a browser actually landed on</li>
         <li>Optional local model as a tie-breaker on vague cases only, never overruling a hard rule</li>
-        <li>A bigger, configurable brand list and proper Public Suffix List handling</li>
+        <li>Full Public Suffix List (optional, cached)</li>
       </ul>
     </section>
 
