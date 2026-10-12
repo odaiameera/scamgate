@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing, not a real incident)
+name: Trusted-looking address hidden before an @ sign
+kind: url
+label: scam
+expected: deny
+input:
+  url: https://paypal.com@pay-verify.example/login
+  intent: pay for a concert ticket

@@ -31,6 +31,7 @@ class ParsedUrl:
     registrable: str
     tld: str
     path_query: str
+    username: str = ""  # userinfo before '@' (password part dropped, never echoed)
 
 
 def parse(url: str) -> ParsedUrl:
@@ -49,7 +50,8 @@ def parse(url: str) -> ParsedUrl:
     else:
         registrable = ".".join(labels[-2:])
     path_query = unquote(parts.path + ("?" + parts.query if parts.query else "")).lower()
-    return ParsedUrl(host, unicode_host, registrable, labels[-1] if labels else "", path_query)
+    username = unquote(parts.username or "").lower()
+    return ParsedUrl(host, unicode_host, registrable, labels[-1] if labels else "", path_query, username)
 
 
 def _is_ip(host: str) -> bool:
@@ -125,6 +127,21 @@ def known_bad_feed(check: UrlCheck, ctx: RuleContext) -> Hit | None:
                weight=int(ctx.rule_config.get("parent_weight", 50)))
 
 
+def _official_domain_prefix(host: str, brands: dict[str, list[str]]) -> tuple[str, str] | None:
+    """Return (brand, official_domain) if an official domain appears as whole labels in the host
+    without being the host's real domain, e.g. 'paypal.com.secure-login.xyz'."""
+    labels = host.split(".")
+    for brand, official in brands.items():
+        for d in official:
+            d_labels = d.split(".")
+            n = len(d_labels)
+            # Only positions that leave at least one label after the official domain.
+            for i in range(len(labels) - n):
+                if labels[i:i + n] == d_labels:
+                    return brand, d
+    return None
+
+
 @register("url.lookalike_brand", kind="url")
 def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """Domain imitates a well-known brand (typosquat, homoglyph, or brand name on an unrelated domain)."""
@@ -133,6 +150,15 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     for official_list in brands.values():
         if any(_on_domain(p.host, d) for d in official_list):
             return None  # it's an official domain of some brand
+
+    prefix = _official_domain_prefix(p.unicode_host, brands)
+    if prefix:
+        _, official_domain = prefix
+        return Hit(
+            f"'{p.host}' starts with '{official_domain}', but the real address is {p.registrable}. "
+            f"Putting a real site's name in front of another domain is a common phishing trick.",
+            weight=int(ctx.rule_config.get("official_prefix_weight", 80)),
+        )
 
     host_wo_tld = p.unicode_host.rsplit(".", 1)[0] if "." in p.unicode_host else p.unicode_host
     tokens = [t for t in re.split(r"[.\-_]", host_wo_tld) if t and t != "www"]
@@ -180,6 +206,29 @@ def ip_host(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     if _is_ip(p.host):
         return Hit(f"The link goes to a raw IP address ({p.host}); real shops and banks use domain names.")
     return None
+
+
+@register("url.userinfo", kind="url")
+def userinfo(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """Link has a username part before '@', which browsers ignore and scammers use to fake the address."""
+    p = parse(check.url)
+    # Only real links with an explicit scheme; 'mailto:a@b.com' or a bare email isn't a disguised URL.
+    if not p.username or "://" not in check.url.strip():
+        return None
+    shown = p.username if len(p.username) <= 40 else p.username[:37] + "..."
+    brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
+    looks_like_domain = "." in p.username
+    names_brand = any(brand in v for brand in brands for v in normalize_variants(p.username))
+    if looks_like_domain or names_brand:
+        return Hit(
+            f"The link shows '{shown}' before an '@', but browsers ignore everything before the '@'. "
+            f"It actually goes to {p.host}. This is a classic way to fake a trusted address.",
+            weight=int(ctx.rule_config.get("disguise_weight", 75)),
+        )
+    return Hit(
+        f"The link has a username ('{shown}') before the site name. Real sites almost never use this, "
+        f"and it can hide where the link really goes: {p.host}."
+    )
 
 
 @register("url.punycode", kind="url")
