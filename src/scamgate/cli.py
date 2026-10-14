@@ -10,8 +10,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from scamgate import bench as bench_mod
-from scamgate import engine
+from . import bench as bench_mod
+from . import engine
 
 app = typer.Typer(help="Self-hosted scam check for AI agents.", no_args_is_help=True)
 console = Console()
@@ -20,7 +20,7 @@ console = Console()
 @app.command()
 def serve() -> None:
     """Run the MCP server over stdio."""
-    from scamgate.server import run
+    from .server import run
 
     run()
 
@@ -38,7 +38,7 @@ def update_feeds_cmd(
     cache: Optional[Path] = typer.Option(None, "--cache-dir", help="Cache folder (default $SCAMGATE_CACHE_DIR or ~/.cache/scamgate)"),
 ) -> None:
     """Download known-bad-link feeds into the local cache. Failed feeds keep their old cache."""
-    from scamgate import feeds as feeds_mod
+    from . import feeds as feeds_mod
 
     names = list(feed) if feed else ([*feeds_mod.FEEDS] if all_feeds else None)
     results = feeds_mod.update_feeds(names, directory=cache)
@@ -56,8 +56,8 @@ def update_feeds_cmd(
 @app.command("domain-age")
 def domain_age_cmd(host: str = typer.Argument(..., help="Domain or URL, e.g. shop.example")) -> None:
     """Look up when a domain was registered (RDAP) and cache it. This goes online, to the domain's registry."""
-    from scamgate import domainage
-    from scamgate.rules.url import parse
+    from . import domainage
+    from .rules.url import parse
 
     dom = parse(host).registrable
     age = domainage.lookup(dom, live=True)
@@ -70,7 +70,7 @@ def domain_age_cmd(host: str = typer.Argument(..., help="Domain or URL, e.g. sho
 @app.command("feeds-status")
 def feeds_status(cache: Optional[Path] = typer.Option(None, "--cache-dir")) -> None:
     """Show cached feeds, their entry counts and age."""
-    from scamgate import feeds as feeds_mod
+    from . import feeds as feeds_mod
 
     meta = feeds_mod.read_meta(cache)
     if not meta:
@@ -86,7 +86,7 @@ def feeds_status(cache: Optional[Path] = typer.Option(None, "--cache-dir")) -> N
 @app.command()
 def hook() -> None:
     """Enforcement hook: read a Hermes or Claude Code hook event (JSON) on stdin, print the decision."""
-    from scamgate import hook as hook_mod
+    from . import hook as hook_mod
 
     raise typer.Exit(hook_mod.main())
 
@@ -95,7 +95,7 @@ def hook() -> None:
 def review(days: int = typer.Option(7, help="Look back this many days"),
            limit: int = typer.Option(15, help="Show at most this many hosts")) -> None:
     """Show which links keep tripping the gate, and what you did with each ask."""
-    from scamgate import asklog
+    from . import asklog
 
     rows = asklog.summarize(days=days)[:limit]
     if not rows:
@@ -122,9 +122,9 @@ def promote(host: str = typer.Option(..., help="Exact host, e.g. shop.example (n
             rule: Optional[str] = typer.Option(None, help="For allow: the one rule to waive on this host"),
             note: str = typer.Option("", help="Why (for your own records)")) -> None:
     """Add a human-approved override. Asks for confirmation; agents are blocked from running this."""
-    from scamgate import overrides
+    from . import overrides
 
-    from scamgate import guard
+    from . import guard
 
     try:
         guard.require_human("Adding a scamgate override", interactive=lambda: overrides._interactive())
@@ -155,7 +155,7 @@ def promote(host: str = typer.Option(..., help="Exact host, e.g. shop.example (n
 def record_payment(payee: str = typer.Option(..., help="Payee name"),
                    account: str = typer.Option(..., help="IBAN, wallet or merchant id")) -> None:
     """Record a payee you've actually paid, so future checks know them (stored as hashes only)."""
-    from scamgate import payees
+    from . import payees
 
     try:
         payees.record(payee, account)

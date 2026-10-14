@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import unicodedata
 from urllib.parse import unquote
 
 _NUM_PART = re.compile(r"^(?:0x[0-9a-f]+|0[0-7]*|[1-9][0-9]*)$", re.I)
@@ -48,7 +49,7 @@ def numeric_ipv4(host: str) -> str | None:
 
 def canon_host(host: str) -> str:
     """Lowercase, percent-decoded, no trailing dot, numeric IPv4 in dotted form."""
-    h = unquote(host or "").strip().lower().rstrip(".")
+    h = unicodedata.normalize("NFKC", unquote(host or "")).strip().lower().rstrip(".")
     if h and not h.startswith("["):
         if (ip := numeric_ipv4(h)) is not None and h != ip:
             return ip

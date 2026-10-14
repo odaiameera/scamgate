@@ -1,6 +1,6 @@
 [project]
 name = "scamgate"
-version = "0.2.0"
+version = "0.3.0"
 description = "Self-hosted scam check for AI agents: verify links and payments before they act"
 license = "MIT"
 readme = "README.md"
@@ -26,9 +26,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scamgate"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"data/blocklist.txt" = "scamgate/_data/blocklist.txt"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -30,14 +30,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from scamgate import asklog, engine, integrity
-from scamgate.models import Decision
-from scamgate.rules.url import parse
-from scamgate.state import state_dir
+from . import asklog, engine, integrity
+from .models import Decision
+from .rules.url import parse, repair_schemes as _repair_schemes
+from .state import state_dir
 
 MAX_URLS = 20
 MAX_INPUT_BYTES = 2 * 1024 * 1024
 MAX_DEPTH = 64
+MAX_SCRIPT_BYTES = 256 * 1024
+MAX_SCRIPT_DEPTH = 4
 STALE_FOR_HOOK_HOURS = 7 * 24
 
 # ------------------------------------------------------------------ tool classes
@@ -150,7 +152,7 @@ def _norm_path(p: str) -> str:
 
 
 def protected_roots() -> list[str]:
-    from scamgate.feeds import cache_dir
+    from .feeds import cache_dir
 
     roots: list[str] = []
     pkg = Path(__file__).resolve().parent
@@ -193,10 +195,12 @@ _PROTECTED_TAILS = (
     (".claude/hooks", ".claude/hooks"), (".hermes/config.yaml", ".hermes/config"),
     ("hermes/config.yaml", "hermes/config"), ("shell-hooks-allowlist.json", "shell-hooks-allowlist"),
     ("hermes/agent-hooks", "hermes/agent-hooks"), ("hermes/plugins", "hermes/plugins"),
+    ("hermes/profiles", "hermes/profiles"), (".hermes/profiles", ".hermes/profiles"),
 )
 _TAIL_RE = re.compile(r"""(?ix)
     (?:\.claude|\.cl\*|\.c\*)[/\\]+(?:settings[\w.*]*|sett\*[\w.*]*|hooks)\b
-  | \bhermes[/\\]+(?:config\.ya?ml|agent-hooks|plugins|hooks)\b
+  | \bhermes[/\\]+(?:config\.ya?ml|agent-hooks|plugins|hooks|profiles)\b
+  | \.hermes[/\\]+profiles\b
   | shell-hooks-allowlist
   | ['"]\.claude['"]\s*[)/]\s*(?:/\s*)?['"]settings
   | \bcd\s+\S*\.claude\b[^\n]*\bsettings
@@ -430,6 +434,7 @@ _DECODE_RUN = re.compile(
 
 def _scan_code(code: str, g: Gate) -> None:
     """URLs, bare hosts after network commands, and opaque network steps, judged per segment."""
+    code = _repair_schemes(code)
     if m := _DECODE_RUN.search(code):
         g.opaque(f"code that is decoded or downloaded and then run ('{m.group(0).strip()[:50]}')")
     g.urls += _URL_RE.findall(code)
@@ -471,6 +476,7 @@ def extract(tool: str, tool_input: dict) -> Gate:
     if t in URL_TOOLS or any(k in tool_input for k in URL_KEYS):
         for k in URL_KEYS:
             for s in _strings(tool_input.get(k)):
+                s = _repair_schemes(s)
                 found = _URL_RE.findall(s)
                 if found:
                     g.urls += found
@@ -482,7 +488,7 @@ def extract(tool: str, tool_input: dict) -> Gate:
                     g.opaque(f"a destination scamgate can't read ('{s.strip()[:40]}')")
         if t in URL_TOOLS:
             for s in everything:
-                g.urls += _URL_RE.findall(s)
+                g.urls += _URL_RE.findall(_repair_schemes(s))
         if t in URL_TOOLS and not g.urls:
             g.opaque("no readable link")
     if t in CODE_TOOLS:
@@ -547,7 +553,7 @@ def _feeds() -> Any:
     """One lazy feed index per process: the hook is short-lived, so skip building big dicts."""
     global _FEEDS
     if _FEEDS is None:
-        from scamgate.feeds import LazyFeedIndex
+        from .feeds import LazyFeedIndex
 
         _FEEDS = LazyFeedIndex()
     return _FEEDS
@@ -632,8 +638,8 @@ _PAYMENT_HELP = ("Before paying, confirm the payee and account through a channel
 
 def _payment_result(tool: str, tool_input: dict) -> Result | None:
     """Payments: score money-moving tool calls; payments hidden in shell/code go to a human."""
-    from scamgate import paygate
-    from scamgate.models import PaymentCheck
+    from . import paygate
+    from .models import PaymentCheck
 
     t = _canon_tool(tool)
     if t in QUIET_TOOLS or t in WRITE_TOOLS:
@@ -731,19 +737,27 @@ def handle(payload: dict) -> dict:
         return _render(dialect, Result("block", f"scamgate's installed files don't match their release ({why}). "
                                                 "Blocking all gated tools until it's fixed. Reinstall scamgate."))
 
+    from .harden import gate_extra, own_check
+
+    if own_check(tool):
+        return {}
+
     if reason := _tamper_reason(tool, tool_input):
         return _render(dialect, Result("block", f"scamgate blocked this because {reason}. "
                                                 "Agents can't change the scam gate. Don't retry it another way; "
                                                 "tell the user they must make this change themselves, outside "
                                                 "the agent."))
 
+    extra = gate_extra(tool, tool_input)
     g = extract(tool, tool_input)
     pay = _payment_result(tool, tool_input)
-    if not g.urls and not g.opaque_network and pay is None:
-        return {}
     r = _evaluate(g) if (g.urls or g.opaque_network) else Result("none")
+    if extra is not None and _RANK[extra.decision] > _RANK[r.decision]:
+        r = extra
     if pay is not None and _RANK[pay.decision] >= _RANK[r.decision]:  # on a tie the payment reason is clearer
         r = pay
+    if r.decision == "none":
+        return {}
     if r.decision != "none" and (warn := _feed_status()) and warn not in r.message:
         r.message = f"{r.message} Note: {warn}"
     if r.decision != "none":

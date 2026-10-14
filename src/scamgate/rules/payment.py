@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-from scamgate.config import lst
-from scamgate.models import PaymentCheck, PaymentMethod, VopResult
-from scamgate.registry import Hit, RuleContext, register
+from ..config import lst
+from ..models import PaymentCheck, PaymentMethod, VopResult
+from ..registry import Hit, RuleContext, register
 
 
 def _text(check: PaymentCheck) -> str:

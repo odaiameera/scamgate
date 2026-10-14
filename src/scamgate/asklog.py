@@ -18,8 +18,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from scamgate.redact import redact_text, redact_url
-from scamgate.state import ensure_state_dir, state_dir
+from .redact import redact_text, redact_url
+from .state import ensure_state_dir, state_dir
 
 
 def log_path() -> Path:

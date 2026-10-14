@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 from urllib.parse import urlsplit, urlunsplit
 
-from scamgate.hostnorm import canon_host
+from .hostnorm import canon_host
 
 ENV_CACHE_DIR = "SCAMGATE_CACHE_DIR"
 ENV_URLHAUS_KEY = "SCAMGATE_URLHAUS_AUTH_KEY"

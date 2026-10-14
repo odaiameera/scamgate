@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scamgate import guard
-from scamgate.state import state_dir
+from . import guard
+from .state import state_dir
 
 _SUFFIXES = r"\b(ltd|limited|llc|inc|plc|gmbh|teoranta|dac|co|company|the|and|of)\b"
 _GENERIC = {"bank", "the", "mr", "mrs", "ms", "dr", "st", "saint", "group", "services", "payments", "account"}
