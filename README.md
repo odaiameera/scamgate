@@ -177,6 +177,25 @@ It speaks Hermes shell hooks and Claude Code `PreToolUse` hooks.
 - **Never says "allow".** Silence means "no objection", so it can only tighten your agent's
   permissions, never loosen them.
 
+### Pipeline
+
+`hook.handle()` is the only enforcement function. The shell hook and the Hermes plugin both call it. MCP does not.
+
+1. Integrity check on a wheel install. A mismatch blocks every gated call. Editable and unpackaged installs pass as `dev`.
+2. scamgate's own `check_url` / `check_payment` tools return silence, so asking the gate is not itself blocked.
+3. Tamper: writes to the package, state, feed cache, hook config, and other Hermes profiles, plus commands that uninstall the gate or call `promote` / `record-payment`.
+4. Extra checks: reading the signing key; Hermes safety switches (`approvals.mode off`, `--yolo`, `plugins uninstall`, `--safe-mode`, `--dangerously-skip-permissions`); writes to files other tools run; cron scripts under `$HERMES_HOME/scripts`; script files named by `bash` / `python` / `node` / `pwsh` / `uv run`, followed a few levels deep.
+5. URL extraction. `https:/host` and `https:///host` are rewritten to `https://host`. Hosts are NFKC-normalised, percent-decoded, and numeric IPv4 is expanded. Segments split on newlines, `;`, `&&`, `||` and `|`.
+6. Score each URL with and without the agent's reason. Take the higher score, then the worst decision. An unreadable destination asks. More than 20 clean URLs asks.
+7. A payment result wins a tie with a generic network ask. A URL deny still beats a payment ask.
+8. Render `{}` for silence, Hermes `block`/`approve`, or Claude `deny`/`ask`. Log the ask or deny.
+
+`rule_key` is the host plus the rule ids, or a hash of the opaque command. One "always" does not cover another host.
+
+The plugin sees per-chat `/yolo` and `approvals.mode: off`, and turns an ask into a block unless `when_approvals_off` is `allow`. The shell hook cannot see that session state. Measured on one Windows machine: about 0.5–0.7 s per shell-hook process, about 10 ms in-process. Not a benchmark suite.
+
+It does not see a redirect after the request has left, the behaviour of a compiled binary, or a script that is not named in the call. Same-user code outside the agent can still read the signing key. Details: [docs, Mechanics](https://odaiameera.github.io/scamgate/docs.html#mechanics).
+
 **Hermes** (`~/.hermes/config.yaml`). Needs a Hermes build whose shell hooks understand
 `"action": "approve"` (older builds dropped it, turning every ask into a pass; fixed in issue
 #92553, Sep 2026). Hermes asks you to approve a new hook the first time it runs in an interactive

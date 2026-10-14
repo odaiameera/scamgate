@@ -33,6 +33,7 @@
     <p>Start</p>
     <a href="#quickstart">Quickstart</a>
     <a href="#decides">How it decides</a>
+    <a href="#mechanics">Mechanics</a>
     <a href="#agents">Add it to your agent</a>
     <p>Enforce</p>
     <a href="#hook">The hook</a>
@@ -86,8 +87,56 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
         <a href="#rules">Rules</a>.</p>
     </section>
 
+    <section id="mechanics">
+      <h2><span class="num">03</span>Mechanics</h2>
+      <p><code>hook.handle(payload)</code> is the enforcement function. The shell hook, <code>scamgate hook</code>, and the Hermes plugin all call it. MCP <code>check_url</code> and <code>check_payment</code> do not: those run only if the agent calls them.</p>
+      <p>Only pre-events are gated: Hermes <code>pre_tool_call</code> and Claude Code <code>PreToolUse</code>. A missing event name is treated as a pre-event. Post-events only record whether the call ran. Any other event returns <code>{}</code>.</p>
+      <h3>Order inside handle()</h3>
+      <ol>
+        <li><strong>Integrity.</strong> A wheel install is checked against its RECORD hashes and unexpected <code>.pth</code> files. A mismatch blocks every gated call. An editable or unpackaged install reports <code>dev</code> and continues. A directory plugin is not a wheel, so this check does not cover those files.</li>
+        <li><strong>Own check tools.</strong> A tool name containing <code>scamgate</code> and <code>check_url</code> or <code>check_payment</code> returns silence. Asking the gate about a link must not be blocked for naming it.</li>
+        <li><strong>Tamper.</strong> Writes to the package, state dir, feed cache, the install's site-packages and scripts, Claude settings, and Hermes config, hooks, plugins and profiles are blocked. So are commands that remove the hook, uninstall scamgate, or call <code>promote</code> / <code>record-payment</code>. Paths are normalised: <code>~</code>, <code>$HOME</code>, <code>%USERPROFILE%</code>, git-bash <code>/c/Users</code>.</li>
+        <li><strong>Extra checks</strong> (<code>harden.gate_extra</code>). Reading <code>state.key</code>, <code>payees.salt</code>, or the state directory is blocked. Safety switches in non-quiet tool arguments are blocked: <code>hermes config set approvals…</code>, <code>hermes config edit</code>, <code>hermes plugins uninstall|disable|remove</code>, <code>--yolo</code>, <code>HERMES_YOLO_MODE=</code>, <code>--safe-mode</code>, <code>--ignore-user-config</code>, <code>--dangerously-skip-permissions</code>, <code>bypassPermissions</code>, Codex's approval bypass, and <code>set_config_value(…, approvals…)</code>. Quiet tools (notes, chat) are not scanned, so quoting the command in a message is fine. <code>hermes plugins install|enable</code> and <code>hermes -p</code> / <code>--profile</code> ask.</li>
+        <li><strong>Files other tools will run.</strong> A write or patch of a Makefile, <code>package.json</code>, script, git hook, CI workflow, or <code>$HERMES_HOME/scripts</code> file is scored for literal URLs. Decode-and-run asks. A shell script with a network command and a hidden destination asks. A <code>.md</code> note that quotes a scam URL is not a visit.</li>
+        <li><strong>Cron scripts.</strong> <code>script</code> and <code>monitor_script</code> are read from <code>$HERMES_HOME/scripts</code> when the job is created, because <code>no_agent</code> jobs run later with no hook. A missing file asks. A readable clean script is silent.</li>
+        <li><strong>Write-then-run.</strong> <code>bash</code>, <code>sh</code>, <code>source</code>, <code>.</code>, <code>python</code>, <code>node</code>, <code>pwsh -File</code>, <code>uv run</code> and <code>./file.sh</code> are resolved against <code>workdir</code> and any <code>cd</code>, then read. Nested calls are followed to depth 4, up to 256 KB. Too big to read asks. A path that does not exist is silent. <code>bash -c</code> and <code>python -m</code> are inline, not file reads.</li>
+        <li><strong>Extract and score.</strong> <code>https:/host</code> and <code>https:///host</code> are rewritten to <code>https://host</code> before matching. Hosts are NFKC-normalised, percent-decoded, and numeric IPv4 (<code>3405803781</code>, <code>0xcb007105</code>) becomes a dotted quad. Commands are split on newlines, <code>;</code>, <code>&amp;&amp;</code>, <code>||</code> and <code>|</code>, and each segment is judged alone. Text-only commands (<code>grep</code>, <code>echo</code>, <code>git log</code>) are skipped unless they substitute a command. Lockfile installs are skipped; a URL inside them is still checked. Each URL is scored with and without the agent's stated reason; the higher score wins. Deny beats ask beats silence. More than 20 clean URLs asks. No feeds cached asks, unless <code>SCAMGATE_NO_FEEDS=warn</code>. A destination that cannot be read asks. In program text, only a literal URL counts as readable.</li>
+        <li><strong>Merge.</strong> The extra-check result replaces the URL result only if it is strictly worse. A payment result wins a tie, so the message says it is a payment. A URL deny still beats a payment ask. Silence is <code>{}</code>, not allow.</li>
+      </ol>
+      <h3>What the harness receives</h3>
+<pre class="code" data-lang="json"><code><span class="c">// Hermes. approve means ask the human. rule_key is the "always" grain.</span>
+{"action": "block"|"approve", "message": "…", "rule_key": "scamgate:host:…"}
+
+<span class="c">// Claude Code</span>
+{"hookSpecificOutput": {"hookEventName": "PreToolUse",
+  "permissionDecision": "deny"|"ask", "permissionDecisionReason": "…"}}</code></pre>
+      <p><code>rule_key</code> is the host plus the rule ids that fired, or a hash of the opaque command. One "always" does not cover another host. The hook never emits allow, so it cannot loosen a harness that already restricts the tool.</p>
+      <h3>Which arguments are scanned</h3>
+      <table class="tbl">
+        <thead><tr><th>Class</th><th>Examples</th><th>What is read</th></tr></thead>
+        <tbody>
+          <tr><td>URL tools</td><td><code>browser_navigate</code>, <code>web_extract</code></td><td>URL fields, and any URL elsewhere in the arguments</td></tr>
+          <tr><td>Code tools</td><td><code>terminal</code>, <code>execute_code</code>, <code>powershell</code></td><td><code>command</code> / <code>code</code>, then any script file that command runs</td></tr>
+          <tr><td>Write tools</td><td><code>write_file</code>, <code>patch</code></td><td>The path, always. The body, if the path is a file something else will run</td></tr>
+          <tr><td>Quiet tools</td><td><code>memory</code>, <code>send_message</code>, <code>web_search</code></td><td>Not a visit. <code>read_file</code> / <code>search_files</code> of the state dir is still blocked</td></tr>
+          <tr><td>Unknown MCP</td><td><code>mcp__server__tool</code></td><td>Any URL in the arguments. Network-ish names also get their code-like fields scanned</td></tr>
+        </tbody>
+      </table>
+      <h3>Plugin and shell hook</h3>
+      <p>Same <code>handle()</code>. The shell hook is one process per call, about 0.5–0.7 s here. The plugin calls it in-process, about 10 ms on the same Windows machine, one benchmark, not a guarantee. Needs Hermes 0.19.1+.</p>
+      <p>Hermes auto-approves an <code>approve</code> when <code>/yolo</code>, <code>HERMES_YOLO_MODE</code>, or <code>approvals.mode: off</code> is on. The plugin sees that session state and turns the ask into a block, unless <code>plugins.entries.scamgate.settings.when_approvals_off</code> is <code>allow</code>. The shell hook cannot: it only sees the command string, and Hermes approves the ask for it.</p>
+      <h3>What this does not see</h3>
+      <ul>
+        <li>A redirect after the request has already been sent. <code>transform_tool_result</code> is not wired.</li>
+        <li>The behaviour of a compiled binary.</li>
+        <li>A script that is not named in the tool call, and is not called from one that is.</li>
+        <li>Same-user code outside the agent. It can read <code>state.key</code> or rewrite installed files. The signature is tamper-evidence, not isolation.</li>
+        <li>A chat where the hook or plugin is not installed, or has been disabled outside the paths above.</li>
+      </ul>
+    </section>
+
     <section id="agents">
-      <h2><span class="num">03</span>Add it to your agent</h2>
+      <h2><span class="num">04</span>Add it to your agent</h2>
       <p>scamgate runs as an MCP server over stdio with <code>scamgate serve</code>.</p>
       <h3>Hermes</h3>
 <pre class="code" data-lang="yaml"><code><span class="c"># ~/.hermes/config.yaml</span>
@@ -111,7 +160,7 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
     </section>
 
     <section id="hook">
-      <h2><span class="num">04</span>Enforce it with a hook</h2>
+      <h2><span class="num">05</span>Enforce it with a hook</h2>
       <p>The MCP tools only work when the agent chooses to call them, and a prompt injection can tell it not to.
         <code>scamgate-hook</code> runs in the harness instead: it reads one hook event as JSON on stdin and writes a
         decision on stdout. It speaks Hermes shell hooks and Claude Code <code>PreToolUse</code>/<code>PostToolUse</code>.</p>
@@ -174,7 +223,7 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
     </section>
 
     <section id="review">
-      <h2><span class="num">05</span>Ask log, review &amp; promote</h2>
+      <h2><span class="num">06</span>Ask log, review &amp; promote</h2>
       <p>Every ask and deny is logged to the state folder with redacted targets (no passwords, query values, card
         numbers, IBANs, emails or keys), the rules that fired, the score, the agent's stated reason and whether you
         then let the call run. The stated reason is stored for you to read and marked <strong>untrusted</strong>: an
@@ -194,7 +243,7 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
     </section>
 
     <section id="payees">
-      <h2><span class="num">06</span>Payee history</h2>
+      <h2><span class="num">07</span>Payee history</h2>
       <p><code>check_payment</code> doesn't take the agent's word for <code>is_new_payee</code>. It looks the payee
         up in a local history of people you've actually paid, stored as salted hashes, never names or account numbers.</p>
       <ul>
@@ -211,7 +260,7 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
     </section>
 
     <section id="rules">
-      <h2><span class="num">07</span>Rules</h2>
+      <h2><span class="num">08</span>Rules</h2>
       <p>Current rules and points, read from <code>src/scamgate/config/rules.yaml</code> when this site was built.</p>
       <table class="tbl" id="rules-table"><tbody><tr><td>Loading the rule list…</td></tr></tbody></table>
       <p>Feed matches: an exact listed URL scores 100, an exact listed host 75, and a subdomain of a listed domain
@@ -220,7 +269,7 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
     </section>
 
     <section id="feeds">
-      <h2><span class="num">08</span>Known-bad-link feeds</h2>
+      <h2><span class="num">09</span>Known-bad-link feeds</h2>
       <p>Only <code>scamgate update-feeds</code> touches the network. Checks read the local cache. No feed data is
         bundled. A failed download keeps that feed's previous cache, and verdicts warn when no feed is cached or a feed
         is older than 24 hours. A running MCP server picks up a refreshed cache without a restart.</p>
@@ -243,7 +292,7 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
     </section>
 
     <section id="config">
-      <h2><span class="num">09</span>Configuration</h2>
+      <h2><span class="num">10</span>Configuration</h2>
       <p>Weights, thresholds, brand lists and word lists live in
         <a href="https://github.com/odaiameera/scamgate/blob/main/src/scamgate/config/rules.yaml"><code>rules.yaml</code></a>.
         Your own blocklist is <code>$SCAMGATE_BLOCKLIST</code> (example: <code>src/scamgate/data/blocklist.txt</code>); a listed domain also blocks its subdomains.</p>
@@ -266,7 +315,7 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
     </section>
 
     <section id="cli">
-      <h2><span class="num">10</span>CLI</h2>
+      <h2><span class="num">11</span>CLI</h2>
       <table class="tbl">
         <thead><tr><th>Command</th><th>What it does</th></tr></thead>
         <tbody>
@@ -284,7 +333,7 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
     </section>
 
     <section id="mcp">
-      <h2><span class="num">11</span>MCP tools</h2>
+      <h2><span class="num">12</span>MCP tools</h2>
 <pre class="code" data-lang="text"><code>check_url(url: str, intent: str | None = None) -&gt; Verdict
 
 check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
@@ -298,7 +347,7 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
     </section>
 
     <section id="limits">
-      <h2><span class="num">12</span>Limits</h2>
+      <h2><span class="num">13</span>Limits</h2>
       <ul>
         <li><strong>Advisory over MCP.</strong> Without the hook, the agent has to call it and respect the answer. Even
           with the hook it only sees tool calls: a redirect after the page opens, or a destination hidden in a
@@ -306,8 +355,7 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
         <li><strong>Heuristics miss things.</strong> Rules miss scams that don't match them and sometimes flag legitimate actions.</li>
         <li><strong>Known trade-offs:</strong> a word one letter off a long brand (<code>stripes.com</code>) still asks. A bank
           transfer to a new payee asks (25) unless Verification of Payee matched the name.</li>
-        <li><strong>Arguments, not behaviour.</strong> The hook reads tool arguments. A script or install hook that opens the
-          network on its own is invisible; code that's decoded or downloaded and then run asks.</li>
+        <li><strong>Arguments, plus scripts it can open.</strong> The hook reads tool arguments, and a script file the command names, plus scripts that file calls, a few levels deep. A compiled binary, a file that is not named, or a redirect after the request has already left is not inspected. Decode-and-run still asks even when the payload is not a file.</li>
         <li>Domain age needs opting in (<code>SCAMGATE_RDAP=cache|live</code>). The brand pack covers about 50 brands; the suffix list is curated, not the full PSL.</li>
         <li>Payee history only knows payees you've recorded. scamgate doesn't verify IBANs or call your bank.</li>
         <li><strong>Not a sandbox.</strong> Tamper protection stops an agent's normal tools. Anything with full control of
@@ -320,7 +368,7 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
     </section>
 
     <section id="roadmap">
-      <h2><span class="num">13</span>Roadmap</h2>
+      <h2><span class="num">14</span>Roadmap</h2>
       <ul>
         <li>IBAN checksum validation and Verification of Payee integration</li>
         <li>Redirect after-check: re-check the page a browser actually landed on</li>
@@ -330,7 +378,7 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
     </section>
 
     <section id="contributing">
-      <h2><span class="num">14</span>Contributing</h2>
+      <h2><span class="num">15</span>Contributing</h2>
       <p>Issues and pull requests are welcome, especially new rules, scenarios (scam and legit) and false-positive
         reports. Include a test or scenario with each rule change, and keep checks offline and deterministic.
         <code>scamgate bench --strict</code> runs 22 hand-written example scenarios (15 scam, 7 legit): a regression
