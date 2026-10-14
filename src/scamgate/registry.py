@@ -57,7 +57,7 @@ def register(rule_id: str, kind: Kind) -> Callable[[RuleFn], RuleFn]:
 
 def rules_for(kind: Kind) -> list[Rule]:
     # Importing the rule modules populates the registry.
-    from scamgate.rules import payment, url  # noqa: F401
+    from .rules import payment, url  # noqa: F401
 
     return [r for r in _REGISTRY.values() if r.kind == kind]
 

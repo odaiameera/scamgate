@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0] - 2026-10-14
+
+Hermes plugin, and the holes found while making it.
+
+### Hermes plugin
+- In-process plugin (`src/scamgate/plugin.yaml`): `pre_tool_call`, `post_tool_call`, `scamgate_check_url`, `scamgate_check_payment`, `/scamgate`.
+- Same decisions as the shell hook, without a subprocess. Needs Hermes 0.19.1+.
+- When `/yolo` or `approvals.mode: off` would auto-approve an ask, the plugin blocks instead. Set `plugins.entries.scamgate.settings.when_approvals_off: allow` to keep the old behaviour.
+
+### Hook
+- Blocks Hermes safety switches (`approvals.mode off`, `--yolo`, `plugins uninstall`, `--safe-mode`, `--dangerously-skip-permissions`, and the same idea in code or another tool).
+- Blocks reading the signing key and payee salt.
+- Reads a script before running it, including scripts a cron job would run later with no agent.
+- Checks the body of files other tools run (Makefile, package.json, git hooks, CI, Hermes cron scripts). Notes are still just notes.
+- scamgate's own check tools are not gated for naming the link they were asked about.
+- Other Hermes profiles' config is protected.
+- `https:/host` and `https:///host` are checked as `https://host`.
+
 ## [0.2.0] - 2026-10-12
 
 First tagged release. Everything since 0.1.0 (the MCP server and rules) is new here.

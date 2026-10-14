@@ -6,8 +6,8 @@ from typing import Any, Literal
 
 from mcp.server.mcpserver import MCPServer
 
-from scamgate import engine
-from scamgate.models import PaymentCheck
+from . import engine
+from .models import PaymentCheck
 
 mcp = MCPServer(
     "scamgate",

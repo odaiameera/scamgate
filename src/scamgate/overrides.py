@@ -16,8 +16,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scamgate import guard
-from scamgate.state import state_dir
+from . import guard
+from .state import state_dir
 
 NEVER_WAIVED = {"url.known_bad_feed", "url.blocklist", "url.override", "url.intent_mismatch"}
 _HOST = re.compile(r"^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$")

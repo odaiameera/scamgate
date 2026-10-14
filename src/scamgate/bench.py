@@ -7,8 +7,8 @@ from pathlib import Path
 
 import yaml
 
-from scamgate import engine
-from scamgate.models import Decision, PaymentCheck, Verdict
+from . import engine
+from .models import Decision, PaymentCheck, Verdict
 
 
 @dataclass

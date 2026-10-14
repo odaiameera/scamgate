@@ -10,6 +10,6 @@ import sys
 
 
 def main() -> None:
-    from scamgate.hook import main as run
+    from .hook import main as run
 
     sys.exit(run())

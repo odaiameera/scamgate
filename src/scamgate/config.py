@@ -15,7 +15,7 @@ ENV_BLOCKLIST = "SCAMGATE_BLOCKLIST"
 
 
 def _default_config_text() -> str:
-    return resources.files("scamgate").joinpath("config/rules.yaml").read_text("utf-8")
+    return resources.files(__package__).joinpath("config/rules.yaml").read_text("utf-8")
 
 
 @lru_cache(maxsize=8)
@@ -29,10 +29,8 @@ def _blocklist_candidates() -> list[Path]:
     out: list[Path] = []
     if env := os.environ.get(ENV_BLOCKLIST):
         out.append(Path(env))
-    # Source checkout / editable install: <repo>/data/blocklist.txt
-    out.append(Path(__file__).resolve().parents[2] / "data" / "blocklist.txt")
-    # Installed wheel: bundled copy
-    out.append(Path(str(resources.files("scamgate").joinpath("_data/blocklist.txt"))))
+    # Bundled example list, inside the package (wheel, source checkout and Hermes plugin alike)
+    out.append(Path(__file__).resolve().parent / "data" / "blocklist.txt")
     return out
 
 

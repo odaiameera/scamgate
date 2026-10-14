@@ -201,9 +201,17 @@ _WRITE = re.compile(r"""(?ix)(?:\s-X\s*['"]?(?:POST|PUT|PATCH)\b|\s--request\s+[
 _HOST_IN = re.compile(r"(?i)https?://([a-z0-9.-]+)(/[^\s'\"`)]*)?")
 
 
+_SDK_PAY = re.compile(
+    r"(?i)\bstripe\.(?:Payout|PaymentIntent|Transfer|Charge|Refund|Subscription)\.create\b"
+    r"|\bpaypal\.Payout\b|\.payouts\(\)\.create\b"
+)
+
+
 def scan_code(code: str) -> CodePayment | None:
     if m := _CRYPTO_CLI.search(code):
         return CodePayment(f"a crypto transaction ('{m.group(0).strip()[:40]}')")
+    if m := _SDK_PAY.search(code):
+        return CodePayment(f"a payment SDK call ('{m.group(0).strip()[:40]}')")
     if not _WRITE.search(code):
         return None
     hosts = []

@@ -195,8 +195,14 @@ hooks:
       timeout: 15
 ```
 
-Note: `/yolo` or `approvals.mode: off` in Hermes auto-approves every scamgate **ask** (blocks still
-hold).
+Note: with the shell hook, `/yolo` or `approvals.mode: off` auto-approves every scamgate **ask**
+(blocks still hold). The Hermes plugin below turns those asks into blocks instead, unless you set
+`plugins.entries.scamgate.settings.when_approvals_off: allow`.
+
+**Hermes plugin** (preferred once it is in the catalog). Same checks as the shell hook, in-process,
+about 50× faster, and it can see a per-chat `/yolo`. Needs Hermes 0.19.1+. Until the catalog entry
+lands, install the `src/scamgate` directory as a plugin. It registers `pre_tool_call`,
+`scamgate_check_url`, `scamgate_check_payment`, and `/scamgate status`.
 
 **Claude Code** (`.claude/settings.json`). Needs Claude Code **v2.1.295+** for `onFailure`.
 Without it, a hook that crashes, times out or can't start lets the tool call through:
@@ -313,7 +319,7 @@ Refresh with cron, for example every 6 hours:
 0 */6 * * * cd /path/to/scamgate && uv run scamgate update-feeds >> ~/.cache/scamgate/update.log 2>&1
 ```
 
-Your own blocklist: [`data/blocklist.txt`](data/blocklist.txt) (or `$SCAMGATE_BLOCKLIST`). It
+Your own blocklist: [`src/scamgate/data/blocklist.txt`](src/scamgate/data/blocklist.txt) (or `$SCAMGATE_BLOCKLIST`). It
 ships with a few made-up `.example` domains.
 
 ## False positives

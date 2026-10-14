@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from scamgate import feeds as feeds_mod
-from scamgate import overrides as overrides_mod
-from scamgate import payees as payees_mod
-from scamgate.config import load_blocklist, load_config, rule_cfg
-from scamgate.models import Decision, PaymentCheck, Reason, UrlCheck, Verdict
-from scamgate.registry import Hit, Kind, RuleContext, rules_for
+from . import feeds as feeds_mod
+from . import overrides as overrides_mod
+from . import payees as payees_mod
+from .config import load_blocklist, load_config, rule_cfg
+from .models import Decision, PaymentCheck, Reason, UrlCheck, Verdict
+from .registry import Hit, Kind, RuleContext, rules_for
 
 
 def _apply_overrides(url: str, reasons: list[Reason], items: list[dict], warnings: list[str]) -> list[Reason]:
-    from scamgate.rules.url import parse
+    from .rules.url import parse
 
     host = parse(url).host
     if not host:

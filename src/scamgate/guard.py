@@ -21,7 +21,7 @@ import secrets
 import sys
 from pathlib import Path
 
-from scamgate.state import ensure_state_dir, state_dir
+from .state import ensure_state_dir, state_dir
 
 AGENT_ENV_MARKERS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "HERMES_SESSION_ID", "HERMES_GATEWAY_SESSION",
                      "HERMES_INTERACTIVE_AGENT", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED",

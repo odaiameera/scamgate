@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import unquote, urlsplit
 
-from scamgate.config import lst
-from scamgate.hostnorm import canon_host
-from scamgate.models import UrlCheck
-from scamgate.registry import Hit, RuleContext, register
+from ..config import lst
+from ..hostnorm import canon_host
+from ..models import UrlCheck
+from ..registry import Hit, RuleContext, register
 
 # Multi-part public suffixes we care about. Not a full Public Suffix List (roadmap).
 # Curated, not the full PSL: country second-level domains and big shared-hosting suffixes, so
@@ -52,8 +52,13 @@ class ParsedUrl:
     username: str = ""  # userinfo before '@' (password part dropped, never echoed)
 
 
+def repair_schemes(text: str) -> str:
+    """`https:///host` and `https:/host` are the same visit as `https://host`. Browsers treat them so."""
+    return re.sub(r"(?i)\b((?:https?|wss?|ftp)):/+", r"\1://", text or "")
+
+
 def parse(url: str) -> ParsedUrl:
-    raw = url.strip()
+    raw = repair_schemes(url.strip())
     if "://" not in raw:
         raw = "http://" + raw
     try:
@@ -130,7 +135,7 @@ def known_bad_feed(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """URL, host or parent domain is listed in a cached known-bad-link feed (offline lookup)."""
     if not ctx.feeds:
         return None
-    from scamgate.feeds import FEEDS
+    from ..feeds import FEEDS
 
     hit = ctx.feeds.lookup(check.url)
     if hit is None:
@@ -368,7 +373,7 @@ def domain_age(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     if domain_age_provider is not None:
         age = domain_age_provider(p.registrable)
     else:
-        from scamgate import domainage
+        from .. import domainage
 
         age = domainage.lookup(p.registrable)
     min_days = int(ctx.rule_config.get("min_age_days", 30))

@@ -147,7 +147,13 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
       <p>Hermes asks you to approve a new hook the first time it runs in an interactive session. Check it with
         <code>hermes hooks list</code> or <code>hermes hooks doctor</code>. You need a Hermes build whose shell hooks
         understand <code>"action": "approve"</code>; older builds dropped it, turning every ask into a pass (issue #92553,
-        Sep 2026). <code>/yolo</code> or <code>approvals.mode: off</code> auto-approves every ask; blocks still hold.</p>
+        Sep 2026). With the shell hook, <code>/yolo</code> or <code>approvals.mode: off</code> auto-approves every ask; blocks still hold.
+        The Hermes plugin turns those asks into blocks unless <code>when_approvals_off</code> is <code>allow</code>.</p>
+      <h3>Hermes plugin</h3>
+      <p>Preferred once it is in the catalog. Same checks, in-process, and it can see a per-chat <code>/yolo</code>.
+        Needs Hermes 0.19.1+. It registers <code>pre_tool_call</code>, <code>scamgate_check_url</code>,
+        <code>scamgate_check_payment</code> and <code>/scamgate status</code>. Install from the catalog when the entry lands,
+        or point Hermes at the <code>src/scamgate</code> directory until then.</p>
       <h3>Claude Code</h3>
       <p>Needs Claude Code <strong>v2.1.295+</strong> for <code>onFailure</code>. Without it, a hook that crashes, times out
         or can't start lets the tool call through.</p>
@@ -240,7 +246,7 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
       <h2><span class="num">09</span>Configuration</h2>
       <p>Weights, thresholds, brand lists and word lists live in
         <a href="https://github.com/odaiameera/scamgate/blob/main/src/scamgate/config/rules.yaml"><code>rules.yaml</code></a>.
-        Your own blocklist is <code>data/blocklist.txt</code>; a listed domain also blocks its subdomains.</p>
+        Your own blocklist is <code>$SCAMGATE_BLOCKLIST</code> (example: <code>src/scamgate/data/blocklist.txt</code>); a listed domain also blocks its subdomains.</p>
       <table class="tbl">
         <thead><tr><th>Variable</th><th>What it sets</th></tr></thead>
         <tbody>

@@ -35,7 +35,7 @@ def mode() -> str:
 
 
 def _cache_path() -> Path:
-    from scamgate.feeds import cache_dir
+    from .feeds import cache_dir
 
     return cache_dir() / "rdap.json"
 
@@ -66,7 +66,7 @@ def _save(data: dict) -> None:
 def _http_get(url: str) -> str:
     import urllib.request
 
-    from scamgate.feeds import USER_AGENT
+    from .feeds import USER_AGENT
 
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/rdap+json"})
     with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:  # noqa: S310

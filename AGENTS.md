@@ -31,7 +31,7 @@ If a live `scamgate serve` holds `.venv` (Windows locks the exe), use a separate
 - `overrides.py`, `payees.py`, `asklog.py`, `state.py`: signed overrides, salted payee history,
   redacted ask log, state dir; `redact.py`: secret stripping; `integrity.py`: install self-check
 - `server.py`: MCP server; `cli.py`: Typer CLI
-- `scenarios/*.yaml`: example scenarios; `data/blocklist.txt`: example blocklist
+- `scenarios/*.yaml`: example scenarios; `src/scamgate/data/blocklist.txt`: example blocklist
 - `site/`: GitHub Pages site; `docs/design/`: design notes and review write-ups
 
 ## Rules of the road

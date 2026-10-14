@@ -1,0 +1,19 @@
+name: scamgate
+version: "0.3.0"
+description: "Offline scam gate. Blocks known-bad links and payments before a tool runs, and asks a human when it cannot see the destination."
+author: Odai Ameera
+requires_hermes: ">=0.19.1"
+provides_hooks:
+  - pre_tool_call
+  - post_tool_call
+provides_tools:
+  - scamgate_check_url
+  - scamgate_check_payment
+python_dependencies:
+  - "pydantic>=2.7,<3"
+  - "pyyaml>=6.0,<7"
+config_schema:
+  when_approvals_off:
+    type: str
+    description: "When Hermes approvals are off, block asks (default) or allow them."
+    default: block
