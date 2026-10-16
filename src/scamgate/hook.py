@@ -82,7 +82,7 @@ _NET_RE = re.compile(
     r"xdg-open|explorer|"
     r"pipx|uvx|npx|bunx)(?![\w.-])|"
     r"(?:^|(?<=[;&|(]\s)|(?<=[;&|(]))\s*(?:open|start)\s+(?!-\w*\s*$)|"   # macOS open / Windows start as a command
-    r"(?<![\w.-])(?:rsync|scp)\b[^\n;|&]*\s[\w.@-]+:(?![/\\])|"     # only with a host:path argument
+    r"(?<![\w.-])(?:rsync|scp|sftp)(?![\w.-])|"     # only with a host:path argument
     r"\bopenssl\s+s_client\b|"
     # Package managers: only the subcommands that download something.
     r"(?<![\w.-])(?:pip3?|poetry|conda|npm|yarn|pnpm|bun|deno|gem|cargo|go|brew|winget|choco|scoop|apt|apt-get|"
@@ -307,6 +307,43 @@ def _plausible_host(host: str) -> bool:
     return tld in _GTLDS or (len(tld) == 2 and tld.isalpha() and tld not in _CODE_2)
 
 
+_REMOTE_TRANSFER = re.compile(r"(?i)(?<![\w.-])(?:scp|sftp|rsync)(?![\w.-])")
+_TRANSFER_VALUE_FLAGS = {"-P", "-p", "-S", "-F", "-i", "-c", "-o", "-J", "-l", "-B", "-D", "-R", "-b", "-e", "--rsh", "--port"}
+_TRANSFER_HOST = re.compile(r"(?i)^(?:[\w.+~-]+@)?(?P<host>(?:[a-z0-9-]+\.)+[a-z]{2,}|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\])(?::.*)?$")
+_TRANSFER_URL = re.compile(r"(?i)^(?:scp|sftp|rsync)://(?:[^/@\s]+@)?(?P<host>[^/:\s]+)")
+
+
+def _transfer_hosts(segment: str) -> list[str]:
+    """Hosts named by scp, sftp and rsync, including absolute user@host:/path destinations."""
+    import shlex
+    if not _REMOTE_TRANSFER.search(segment):
+        return []
+    try:
+        toks = shlex.split(segment, posix=True)
+    except ValueError:
+        return []
+    while toks and toks[0] in ("sudo", "command"):
+        toks = toks[1:]
+    if not toks or toks[0].lower() not in ("scp", "sftp", "rsync"):
+        return []
+    out, i = [], 1
+    while i < len(toks):
+        tok = toks[i]
+        if tok in _TRANSFER_VALUE_FLAGS and i + 1 < len(toks):
+            i += 2
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        m = _TRANSFER_URL.match(tok) or _TRANSFER_HOST.match(tok)
+        if m:
+            host = m.group("host").strip("[]")
+            if _plausible_host(host):
+                out.append("https://" + host)
+        i += 1
+    return ["local-transfer"] if not out else out
+
+
 _SOCAT_ADDR = re.compile(r"(?i)\b(?:tcp[46]?|udp[46]?|openssl|ssl|tls|proxy|socks[45]a?)"
                          r"(?:-connect)?:(localhost|(?:[a-z0-9-]+\.)+[a-z]{2,}|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\])"
                          r"(?::(\d+))?")
@@ -316,6 +353,7 @@ def _bare_hosts(segment: str) -> list[str]:
     out = [f"https://{m.group(1)}" + (f":{m.group(2)}" if m.group(2) else "") for m in _SOCAT_ADDR.finditer(segment)]
     if out:
         return out
+    out.extend(_transfer_hosts(segment))
     for m in _HOST_TOKEN.finditer(segment):
         tok = m.group(1)
         host = tok.split("/", 1)[0].split(":", 1)[0]
@@ -449,6 +487,8 @@ def _scan_code(code: str, g: Gate) -> None:
             continue
         seg_urls = _URL_RE.findall(seg)
         bare = _bare_hosts(seg) if not seg_urls else []
+        if bare == ["local-transfer"]:
+            continue
         g.urls += bare
         if bare and all(_is_local(u) for u in bare):
             continue
