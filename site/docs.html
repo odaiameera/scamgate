@@ -37,6 +37,7 @@
     <a href="#agents">Add it to your agent</a>
     <p>Enforce</p>
     <a href="#hook">The hook</a>
+    <a href="#hermes-plugin">Hermes catalog plugin</a>
     <a href="#review">Ask log &amp; promote</a>
     <a href="#payees">Payee history</a>
     <p>Reference</p>
@@ -198,11 +199,28 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
         understand <code>"action": "approve"</code>; older builds dropped it, turning every ask into a pass (issue #92553,
         Sep 2026). With the shell hook, <code>/yolo</code> or <code>approvals.mode: off</code> auto-approves every ask; blocks still hold.
         The Hermes plugin turns those asks into blocks unless <code>when_approvals_off</code> is <code>allow</code>.</p>
-      <h3>Hermes plugin</h3>
-      <p>Preferred once it is in the catalog. Same checks, in-process, and it can see a per-chat <code>/yolo</code>.
-        Needs Hermes 0.19.1+. It registers <code>pre_tool_call</code>, <code>scamgate_check_url</code>,
-        <code>scamgate_check_payment</code> and <code>/scamgate status</code>. Install from the catalog when the entry lands,
-        or point Hermes at the <code>src/scamgate</code> directory until then.</p>
+      <h3 id="hermes-plugin">Hermes plugin — available in the catalog</h3>
+      <p>scamgate is now a community plugin in the
+        <a href="https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/scamgate.yaml">Hermes Plugin Catalog</a>.
+        The <a href="https://github.com/NousResearch/hermes-agent/pull/138292">catalog contribution</a>
+        was merged by Teknium. It is an optional install, not a built-in Hermes feature.</p>
+      <p>This is the preferred Hermes integration: the same checks run in-process, and the plugin can see a
+        per-chat <code>/yolo</code>. Needs Hermes 0.19.1+ and a catalog containing the scamgate entry.</p>
+<pre class="code" data-lang="shell"><code>hermes plugins install scamgate
+hermes plugins enable scamgate</code></pre>
+      <p>Run these in your own terminal and follow the installer prompts. The catalog installs its reviewed,
+        pinned commit, not the latest repository head. See the
+        <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/plugin-catalog">Hermes catalog guide</a>
+        for installation and updates.</p>
+      <p>The plugin registers <code>pre_tool_call</code> and <code>post_tool_call</code>,
+        <code>scamgate_check_url</code>, <code>scamgate_check_payment</code> and <code>/scamgate status</code>.
+        You do not need the separate shell hook for the same Hermes instance.</p>
+      <div class="note"><b>Before enabling</b>Agent tool calls that edit Hermes config, profiles, plugins or hooks,
+        or disable approvals, are blocked. With approvals off, an <code>ask</code> becomes a block by default;
+        <code>plugins.entries.scamgate.settings.when_approvals_off: allow</code> restores asks, which Hermes may auto-approve.
+        State and feed caches are shared across profiles by default. Feed downloads are explicit;
+        optional <code>SCAMGATE_RDAP=live</code> sends checked domains to their RDAP registries.
+        Read <a href="#mechanics">Mechanics</a>, <a href="#feeds">Feeds</a> and <a href="#limits">Limits</a> before use.</div>
       <h3>Claude Code</h3>
       <p>Needs Claude Code <strong>v2.1.295+</strong> for <code>onFailure</code>. Without it, a hook that crashes, times out
         or can't start lets the tool call through.</p>
