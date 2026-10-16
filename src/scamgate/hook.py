@@ -453,21 +453,24 @@ def _segments(code: str) -> list[str]:
 
 # Code that is decoded or downloaded and then run: scamgate can't read what it does, so a human
 # approves it. Either half alone (decoding a file, running a script) is ordinary.
-_DECODE = r"""(?:base64\s+(?:-d|-D|--decode)\b|openssl\s+(?:base64|enc)\b[^|;&]*\s-d\b|xxd\s+-r|
-    \bb(?:64|32|16|85)decode|\ba85decode|\bfromhex\b|\bunhexlify|codecs\.decode|\bdecompress\(|rot13|
-    \batob\(|Buffer\.from\([^)]*['"](?:base64|hex)['"]|FromBase64String|\bcurl\b|\bwget\b|
-    \binvoke-webrequest\b|\biwr\b|\birm\b|downloadstring)"""
+_DECODE = r"""(?:(?:base(?:32|64)|b32|b64)\s+(?:-d|-D|--decode)\b|openssl\s+(?:base64|enc)\b[^|;&]*\s-d\b|xxd\s+-r|\b(?:b(?:64|32|16|85)decode|decode_base64|decode64)\b|\ba85decode|\bfromhex\b|\bunhexlify|codecs\.decode|\bdecompress\(|rot13|\batob\(|Buffer\.from\([^)]*['"](?:base64|hex)['"]|FromBase64String|\bcurl\b|\bwget\b|\binvoke-webrequest\b|\biwr\b|\birm\b|downloadstring)"""
 _RUNNER = r"(?:ba|z|k|da|fi|c|tc)?sh|python[\d.]*|py|perl|ruby|node|php|pwsh|powershell|iex|invoke-expression"
 _DECODE_RUN = re.compile(
     rf"""(?ix)
       {_DECODE}[^\n;&]*\|\s*(?:sudo\s+)?(?:{_RUNNER})\b(?!\s+-?\w*\.\w)           # ... | base64 -d | bash
     | (?:(?:{_RUNNER})\s+(?:-c\s+)?|\beval\s+|\bsource\s+|\.\s+)["']?(?:\$\(|<\(|`)[^\n]*{_DECODE}  # bash -c "$(... -d)"
-    | \b(?:exec|eval|compile)\s*\([^\n]*{_DECODE}                                  # exec(b64decode(..))
+    | \b(?:exec|eval|compile|system|os\.system)\s*\([^\n]*{_DECODE}                                  # exec(b64decode(..))
     | new\s+Function\s*\([^\n]*{_DECODE}
     | (?:iex|invoke-expression)\b[^\n]*{_DECODE}
     | {_DECODE}[^\n]*\|\s*(?:iex|invoke-expression)\b
     | (?:pwsh|powershell)(?:\.exe)?\b[^\n]*\s-(?:e|ec|enc|encodedcommand)\s+[A-Za-z0-9+/=]{{8,}}
+    | {_DECODE}[^\n;&]*>>?\s*\S+\s*(?:&&|;)\s*(?:{_RUNNER})\b
     """)
+def _decoded_write_then_run(code: str) -> bool:
+    """Decoded bytes written to a file and a shell execution in the same command."""
+    import re
+    return all(re.search(part, code, re.I | re.S) for part in
+               (_DECODE, r"write_bytes|write_text", r"os\s*\.\s*system|subprocess"))
 
 
 def _scan_code(code: str, g: Gate) -> None:
@@ -475,6 +478,8 @@ def _scan_code(code: str, g: Gate) -> None:
     code = _repair_schemes(code)
     if m := _DECODE_RUN.search(code):
         g.opaque(f"code that is decoded or downloaded and then run ('{m.group(0).strip()[:50]}')")
+    elif _decoded_write_then_run(code):
+        g.opaque("decoded content written to a file and then run")
     g.urls += _URL_RE.findall(code)
     if m := _DYNAMIC_URL_RE.search(code):
         g.opaque(f"a link built at run time ({m.group(0).strip()[:40]})")
