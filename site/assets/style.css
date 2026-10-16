@@ -78,6 +78,14 @@ h1,h2,h3{font-weight:400;margin:0;text-wrap:balance}
 .stamp.ask,.stamp.approve{color:var(--ask);background:var(--ask-bg)}
 .stamp.allow,.stamp.pass{color:var(--allow);background:var(--allow-bg)}
 
+/* ---------- catalog announcement ---------- */
+.catalog-news{background:var(--bg-1);border-bottom:1px solid var(--line-2);padding:22px 0}
+.catalog-news .wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 28px}
+.catalog-news strong{color:var(--amber);font-weight:600}
+.catalog-news p{margin:4px 0 0;color:var(--ink-2);font-size:14px}
+.catalog-links{display:flex;flex-wrap:wrap;gap:4px 24px}
+.catalog-links a{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:14px}
+
 /* ---------- hero ---------- */
 .hero{padding:88px 0 112px;position:relative}
 .hero .wrap{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:64px;align-items:start}

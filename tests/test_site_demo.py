@@ -26,3 +26,18 @@ def test_site_pages_exist_and_link_assets():
         assert 'href="assets/style.css"' in html
         assert "<title>" in html and 'lang="en"' in html
     assert (ROOT / "site" / ".nojekyll").exists()
+
+
+def test_site_announces_accepted_hermes_catalog_entry():
+    catalog = "https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/scamgate.yaml"
+    home = (ROOT / "site" / "index.html").read_text("utf-8")
+    docs = (ROOT / "site" / "docs.html").read_text("utf-8")
+    assert "Now in the Hermes Plugin Catalog" in home
+    assert 'href="docs.html#hermes-plugin"' in home
+    for html in (home, docs):
+        assert catalog in html
+        assert "community plugin" in html
+    assert 'id="hermes-plugin"' in docs
+    assert "hermes plugins install scamgate" in docs
+    assert "Preferred once it is in the catalog" not in docs
+    assert "when the entry lands" not in docs
