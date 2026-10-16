@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.3.0] - 2026-10-14
+## [0.3.0] - 2026-10-16
 
 Hermes plugin, and the holes found while making it.
 
@@ -17,6 +17,10 @@ Hermes plugin, and the holes found while making it.
 - scamgate's own check tools are not gated for naming the link they were asked about.
 - Other Hermes profiles' config is protected.
 - `https:/host` and `https:///host` are checked as `https://host`.
+- `scp`, `sftp` and `rsync` to a blocklisted host are denied, including `user@host:/absolute/path`. Local copies stay quiet.
+- `base32 -d`, `b64 -d`, a decoded file that is then run, and Perl or Ruby `eval` of decoded text ask before they run.
+
+Install commands are pinned to `v0.3.0`.
 
 ## [0.2.0] - 2026-10-12
 
