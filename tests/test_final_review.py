@@ -49,6 +49,18 @@ def test_decoded_code_that_runs_asks(fresh_feeds, cmd):
     assert bash(cmd) in ("ask", "deny"), cmd
 
 
+@pytest.mark.parametrize("cmd", [
+    f"echo {CURL_B64} | base32 -d | bash",
+    f"echo {CURL_B64} | b64 -d | sh",
+    f"base64 -d payload.b64 > /tmp/payload.sh && sh /tmp/payload.sh",
+    f"python3 -c \"import base64,pathlib; pathlib.Path('/tmp/payload.sh').write_bytes(base64.b64decode('{CURL_B64}')); import os; os.system('sh /tmp/payload.sh')\"",
+    f"perl -e \"eval(decode_base64('{CURL_B64}'))\"",
+    f"ruby -e \"eval(Base64.decode64('{CURL_B64}'))\"",
+])
+def test_alternate_decoded_runners_ask(fresh_feeds, cmd):
+    assert bash(cmd) in ("ask", "deny"), cmd
+
+
 def test_execute_code_tool_with_decoded_exec_asks(fresh_feeds):
     ev = {"hook_event_name": "PreToolUse", "tool_name": "mcp__hermes__execute_code",
           "tool_input": {"code": f"import base64\nexec(base64.b64decode('{PY_B64}'))"},
