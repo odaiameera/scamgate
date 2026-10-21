@@ -57,10 +57,32 @@ def _private_write(p: Path, data: str) -> None:
         pass
 
 
+def create_once(p: Path, data: str) -> None:
+    """Write a new private file only if none exists. Two processes starting together keep one key:
+    the full file is written aside, then hard-linked into place, which fails if another got there first."""
+    ensure_state_dir()
+    tmp = p.with_name(f".{p.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+    _private_write(tmp, data)
+    try:
+        os.link(tmp, p)
+    except FileExistsError:
+        pass
+    except OSError:  # no hard links on this filesystem: exclusive create instead
+        try:
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(data)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def _key() -> bytes:
     p = state_dir() / "state.key"
     if not p.exists():
-        _private_write(p, secrets.token_hex(32))
+        create_once(p, secrets.token_hex(32))
     return p.read_text("utf-8").strip().encode()
 
 

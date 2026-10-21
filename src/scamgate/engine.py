@@ -63,8 +63,14 @@ def _run(kind: Kind, check: Any, config: dict[str, Any] | None,
                 continue
             reasons.append(Reason(rule_id=rule.rule_id, explanation=h.explanation, weight=min(w, 100)))
 
-    if kind == "url" and not unreadable and (items := overrides_mod.load()):
-        reasons = _apply_overrides(check.url, reasons, items, warnings)
+    if kind == "url":
+        items, bad = overrides_mod.load_checked()
+        if bad:
+            warnings.append(f"{bad} of your scamgate override rules can't be verified (its signing key is missing or "
+                            "was changed, or the line was edited by hand), so they're ignored. Check the scamgate "
+                            "state dir.")
+        if items and not unreadable:
+            reasons = _apply_overrides(check.url, reasons, items, warnings)
     warnings += extra_warnings or []
 
     reasons.sort(key=lambda r: r.weight, reverse=True)

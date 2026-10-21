@@ -45,6 +45,15 @@
   `mcp__notscamgate__check_url`, used to skip every check, tamper checks included. If you registered the
   MCP server under another name, asking it about a bad link may now ask you first.
 
+### Local state
+- The state dir is created private (0700), and an existing `…/scamgate` state dir from an older install is
+  tightened to 0700. A custom `SCAMGATE_STATE_DIR` is left as you set it. The ask log (`asks.jsonl`,
+  `outcomes.jsonl`) is written 0600: it shows which sites your agent tried to visit.
+- The signing key and payee salt are created once, even when two scamgate processes start together. One
+  used to overwrite the other's key, and records already signed with it stopped verifying.
+- If override rules can't be verified (the signing key is missing or was changed, or a line was edited),
+  checks now warn instead of dropping your deny rules silently.
+
 ## [0.3.0] - 2026-10-16
 
 Hermes plugin, and the holes found while making it.
