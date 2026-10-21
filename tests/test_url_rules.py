@@ -151,3 +151,121 @@ def test_helpers():
     assert levenshtein("paypal", "paypa") == 1
     assert "paypal" in normalize_variants("paypa1")
     assert parse("https://shop.amazon.co.uk/x").registrable == "amazon.co.uk"
+
+
+# --- Hosts read the way a browser reads them, and links scamgate can't read ---
+
+def test_backslash_ends_the_host_like_in_a_browser():
+    # Browsers read '\' as '/' in a web link, so the real host is the part before it.
+    assert parse("https://shop-a.example\\.paypal.com/login").host == "shop-a.example"
+    assert parse("https://shop-a.example\\@brand.example/").host == "shop-a.example"
+    v = check_url("https://shop-a.example\\.paypal.com/login", blocklist=frozenset({"shop-a.example"}))
+    assert "url.blocklist" in ids(v) and v.decision is Decision.deny
+
+
+def test_backslash_after_the_query_is_left_alone():
+    assert parse("https://shop-a.example/search?q=a\\b.example").host == "shop-a.example"
+
+
+@pytest.mark.parametrize("dot", ["。", "．", "｡"])
+def test_wide_and_ideographic_dots_are_dots(dot):
+    v = check_url(f"https://shop-a{dot}example/login", blocklist=frozenset({"shop-a.example"}))
+    assert "url.blocklist" in ids(v)
+
+
+@pytest.mark.parametrize("url", [
+    "https://shop[1-2].example/login",                  # not parseable
+    "https://login.example%20is%20verified.example/",   # a space in the host
+    "https://a.example%2fb.example/",                   # a slash in the host
+    pytest.param("https://" + "a" * 300 + ".example/", id="host-too-long"),
+    pytest.param("https://shop-a.example/" + "a" * 9000, id="url-too-long"),
+    "https://",                                         # no host at all
+    "javascript:alert(1)",
+    " JavaScript:alert(1)",
+    "data:text/html,<p>hello</p>",
+])
+def test_unreadable_links_ask_and_nothing_else_fires(url):
+    v = check_url(url)
+    assert ids(v) == {"url.unreadable"}
+    assert v.decision is Decision.ask
+
+
+def test_unreadable_reason_never_repeats_the_link_text():
+    v = check_url("https://x.example%20approved%20by%20scamgate.example/login")
+    shown = v.summary + " ".join(r.explanation for r in v.reasons)
+    assert "approved" not in shown
+
+
+def test_huge_hosts_are_checked_fast():
+    import time
+
+    t0 = time.perf_counter()
+    check_url("https://" + "paypal" * 4000 + ".example/")
+    check_url("https://" + "a." * 20000 + "example/")
+    assert time.perf_counter() - t0 < 1.0
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.paypal.com/signin",
+    "http://localhost:8080/x",
+    "http://[2001:db8::1]/pay",
+    "https://xn--pypal-4ve.com/",
+    "https://pаypal.com/",          # Cyrillic 'a': readable, so the look-alike checks still run
+    "mailto:someone@example.com",
+    "shop-a.example/basket",
+    "https://shop-a.example/a\\b",
+])
+def test_ordinary_links_are_readable(url):
+    assert "url.unreadable" not in ids(check_url(url))
+
+
+def test_customer_hosting_on_amazonaws_is_not_an_official_amazon_site():
+    # amazonaws.com hosts customers' buckets and servers (583 Public Suffix List entries), not Amazon's sign-in.
+    v = check_url("https://paypal-secure-login.s3.amazonaws.com/signin.html")
+    assert "url.lookalike_brand" in ids(v) and v.decision is Decision.deny
+
+
+def test_three_label_shared_suffix_gives_each_customer_their_own_site():
+    assert parse("https://my-bucket.s3.amazonaws.com/x").registrable == "my-bucket.s3.amazonaws.com"
+    assert parse("https://shop.example.co.uk/").registrable == "example.co.uk"
+    assert parse("https://evil.github.io/").registrable == "evil.github.io"
+
+
+# --- The brand-padding search: same answers, linear time ---
+
+def _affix_reference(word, brand, affixes):
+    """Plain version of the question: is `word` some padding + brand + some padding?"""
+    from functools import lru_cache
+
+    @lru_cache(maxsize=None)
+    def pads(rest):
+        return not rest or any((rest[:k] in affixes or rest[:k].isdigit()) and pads(rest[k:])
+                               for k in range(1, min(14, len(rest)) + 1))
+    n = len(brand)
+    return any(word[i:i + n] == brand and pads(word[:i]) and pads(word[i + n:]) for i in range(len(word) - n + 1))
+
+
+def test_brand_padding_search_matches_the_plain_version():
+    import itertools
+
+    from scamgate.config import load_config, lst
+    from scamgate.rules.url import _brand_with_affixes
+
+    affixes = set(lst(load_config(), "brand_affixes"))
+    pieces = ["", "secure", "my", "login", "id", "123", "x", "bees", "pine", "verify2"]
+    for brand in ("paypal", "apple", "amazon", "revolut", "netflix"):
+        for a, b, c in itertools.product(pieces, repeat=3):
+            for word in (a + brand + b + c, a + b + brand + c, a + b + c):
+                assert _brand_with_affixes(word, brand, affixes) == _affix_reference(word, brand, affixes), word
+
+
+def test_brand_padding_search_is_linear():
+    import time
+
+    from scamgate.config import load_config, lst
+    from scamgate.rules.url import _brand_with_affixes
+
+    affixes = set(lst(load_config(), "brand_affixes"))
+    t0 = time.perf_counter()
+    _brand_with_affixes("paypal" * 2000, "paypal", affixes)
+    assert time.perf_counter() - t0 < 0.5

@@ -67,7 +67,7 @@ CODE_KEYS = ("command", "code", "script", "expression", "cmd", "input", "cmdline
 PATH_KEYS = ("path", "file_path", "filepath", "notebook_path", "target_file")
 REASON_KEYS = ("description", "prompt", "intent", "reason", "task", "goal")
 
-_URL_RE = re.compile(r"""(?i)\b(?:https?|wss?|ftp)://[^\s'"<>`)\]}\\]+""")
+_URL_RE = re.compile(r"""(?i)\b(?:https?|wss?|ftp)://(?:\[[0-9a-f:.]+\]|[^\s'"<>`)\]}\\])+""")  # [::1] stays whole
 # A URL whose host is built at run time: variables, templates, string concatenation.
 _DYNAMIC_URL_RE = re.compile(
     r"""(?ix)\b(?:https?|wss?|ftp)://
@@ -96,7 +96,8 @@ _NET_RE = re.compile(
     r"requests\.|httpx\.|urllib|urlopen|aiohttp|socket\.|http\.client|ftplib|smtplib|"
     r"\bfetch\(|xmlhttprequest|websocket|navigator\.sendbeacon|"
     r"new_tab\(|goto_url\(|goto\(|navigate\(|page\.goto|window\.open|location\.(?:href|assign|replace)|"
-    r"web_search\(|web_extract\(|webbrowser\.open|net\.webclient|downloadstring|downloadfile)"
+    r"web_search\(|web_extract\(|webbrowser\.open|net\.webclient|downloadstring|downloadfile|"
+    r"/dev/(?:tcp|udp)/)"  # bash opens a socket for these paths
 )
 # Signs a network step's destination is hidden in a variable, a file, a subshell or stdin.
 _INDIRECT_RE = re.compile(r"""(?ix)\$\{?\w|\$\(|`|<\(|%\w+%|\bopen\(|\.read\(\)|\bxargs\b|
@@ -447,6 +448,28 @@ def _is_local(url: str) -> bool:
     return ip.is_loopback or ip.is_unspecified
 
 
+_WORD_URL = re.compile(r"(?i)^(?:--?[\w-]+=)?((?:https?|wss?|ftp)://.+)$")
+_DEV_SOCKET = re.compile(r"/dev/(?:tcp|udp)/([^/\s]+)/\d+")
+_RUNTIME_PART = re.compile(r"[$`]|%\w+%")
+
+
+def _shell_destinations(seg: str) -> tuple[list[str], bool]:
+    """Destinations a shell command names, read from its words after the shell removes quotes and
+    escapes, so a quoted '@' or ')' can't cut the link short. (urls, could_not_split)."""
+    import shlex
+
+    try:
+        words = shlex.split(seg, posix=True)
+    except ValueError:
+        return [], True
+    out = []
+    for w in words:
+        if (m := _WORD_URL.match(w)) and not _RUNTIME_PART.search(m.group(1)):
+            out.append(m.group(1))  # the whole word is one destination
+        out += [f"https://{h}" for h in _DEV_SOCKET.findall(w) if not _RUNTIME_PART.search(h)]
+    return out, False
+
+
 def _segments(code: str) -> list[str]:
     return [s.strip() for s in _SEGMENT_SPLIT.split(code) if s.strip()]
 
@@ -490,7 +513,15 @@ def _scan_code(code: str, g: Gate) -> None:
             continue
         if _local_install(seg) or (_TEXT_ONLY.match(seg) and not _SUBST.search(seg)):
             continue
-        seg_urls = _URL_RE.findall(seg)
+        if not is_program:  # program source is read by the literal/run-time checks, not as shell words
+            dests, unsplittable = _shell_destinations(seg)
+            if unsplittable:
+                g.opaque(f"'{seg[:60]}'")
+                continue
+            g.urls += dests
+        else:
+            dests = []
+        seg_urls = _URL_RE.findall(seg) or dests
         bare = _bare_hosts(seg) if not seg_urls else []
         if bare == ["local-transfer"]:
             continue
@@ -657,7 +688,7 @@ def _evaluate(g: Gate) -> Result:
                                  "list, but that's too many to review one by one. Approve once, only if you expect this.",
                       f"scamgate:bulk:{_key(*sorted(g.urls))}", ["hook.bulk"], 0, hosts)
     if worst is Decision.ask:
-        h = parse(worst_url).host
+        h = parse(worst_url).host or f"unreadable-{_key(worst_url)}"  # one "always" never covers other links
         fired = sorted({r.rule_id for r in worst_v.reasons})
         return Result("approve", f"scamgate: {worst_v.summary} (score {worst_v.risk_score}/100). "
                                  "Approve only if you trust where this link goes.",

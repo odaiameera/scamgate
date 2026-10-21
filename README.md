@@ -25,7 +25,8 @@ check, runs locally as an MCP server, and makes no network calls while checking.
 homoglyphs, brand names on unofficial domains, real domains used as a prefix like
 `paypal.com.secure-login.xyz`), addresses hidden before an `@` (`paypal.com@evil.example`), raw
 IP hosts, punycode, cheap abused TLDs, and pages asking for a seed phrase or a login the task
-doesn't need.
+doesn't need. A link it can't read (an invalid site name, a `javascript:` or `data:` link, an
+oversized address) asks: it never gets an `allow`.
 
 **Payment rules:** new payee plus urgency, changed bank details, irreversible methods (crypto,
 gift cards, transfer to a new payee), sellers insisting on a method, over budget, pressure or
@@ -362,15 +363,15 @@ give it an entry under `rules:` in `rules.yaml`, and add tests and a scenario.
 
 ## Bench and tests
 
-[`scenarios/`](scenarios/) holds 22 hand-written **example** cases (15 scam, 7 legit), each with
+[`scenarios/`](scenarios/) holds 24 hand-written **example** cases (17 scam, 7 legit), each with
 an expected decision.
 
 ```console
 $ uv run scamgate bench
 ...
-Scams: 15  caught: 15  missed: 0
+Scams: 17  caught: 17  missed: 0
 Legit: 7  false positives: 0
-Exact decision match: 22/22
+Exact decision match: 24/24
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`

@@ -36,3 +36,26 @@ def test_brand_pack_leaves_real_and_unrelated_sites_alone(domain):
 ])
 def test_registrable_domain_uses_suffix_list(host, registrable):
     assert parse(f"https://{host}/").registrable == registrable
+
+
+# Shared hosting: each hostname under these suffixes belongs to a different customer or user.
+
+@pytest.mark.parametrize("url", [
+    "https://paypal-verify-0lu-script.googleusercontent.com/exec",
+    "https://paypal-login.eastus.cloudapp.azure.com/signin",
+    "https://paypal-login.s3.amazonaws.com/signin",
+])
+def test_brand_name_on_shared_hosting_is_not_official(url):
+    v = engine.check_url(url)
+    assert "url.lookalike_brand" in {r.rule_id for r in v.reasons} and v.decision is not Decision.allow, url
+
+
+def test_sign_in_page_on_a_customer_vm_is_not_official():
+    v = engine.check_url("https://myvm.eastus.cloudapp.azure.com/signin")
+    assert "url.credential_page" in {r.rule_id for r in v.reasons}
+
+
+def test_microsofts_own_azure_hosts_stay_official():
+    for url in ("https://portal.azure.com/", "https://portal.azure.com/signin", "https://management.azure.com/"):
+        v = engine.check_url(url)
+        assert v.decision is Decision.allow and not v.reasons, (url, v.reasons)

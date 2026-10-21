@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing)
+# A data: link carries a whole page instead of naming a site, so there's no site to check.
+name: data link that carries its own sign-in form
+kind: url
+label: scam
+expected: ask
+input:
+  url: 'data:text/html,<form action=https://collect.example/>Sign in to your bank</form>'

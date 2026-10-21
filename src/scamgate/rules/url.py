@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Callable
 from urllib.parse import unquote, urlsplit
 
@@ -42,7 +43,7 @@ _UNICODE_SWAPS = {
 }
 
 
-@dataclass
+@dataclass(frozen=True)
 class ParsedUrl:
     host: str  # as given (lowercase, ascii / punycode form)
     unicode_host: str  # punycode decoded where possible
@@ -50,6 +51,16 @@ class ParsedUrl:
     tld: str
     path_query: str
     username: str = ""  # userinfo before '@' (password part dropped, never echoed)
+    unreadable: str = ""  # why scamgate can't tell where the link goes; a fixed phrase, never link text
+
+
+MAX_URL_CHARS = 8192
+MAX_HOST_CHARS = 253  # the most DNS allows
+# Links that run code or carry a whole page instead of naming a site.
+_NON_WEB = re.compile(r"(?i)^(javascript|vbscript|data|file|blob|filesystem):")
+# Characters a browser refuses in a host name (WHATWG forbidden domain code points).
+_FORBIDDEN_HOST = re.compile(r"[\x00-\x20#%/:<>?@\[\\\]^|\x7f]")
+_C0_OR_SPACE = "".join(map(chr, range(0x21)))
 
 
 def repair_schemes(text: str) -> str:
@@ -57,25 +68,43 @@ def repair_schemes(text: str) -> str:
     return re.sub(r"(?i)\b((?:https?|wss?|ftp)):/+", r"\1://", text or "")
 
 
+def _unreadable(why: str) -> ParsedUrl:
+    return ParsedUrl("", "", "", "", "", unreadable=why)
+
+
+@lru_cache(maxsize=1024)  # every rule reads the same link; parse it once per check
 def parse(url: str) -> ParsedUrl:
-    raw = repair_schemes(url.strip())
+    # Browsers drop tabs and newlines anywhere, and control characters or spaces at either end.
+    raw = re.sub(r"[\t\n\r]", "", url or "").strip(_C0_OR_SPACE)
+    if len(raw) > MAX_URL_CHARS:
+        return _unreadable("is too long to check")
+    if m := _NON_WEB.match(raw):
+        return _unreadable(f"is a {m.group(1).lower()}: link, not a web address")
+    # Before the query, browsers read '\' as '/': 'https://a.example\.b.com' goes to a.example.
+    end = min((i for i in (raw.find("?"), raw.find("#")) if i >= 0), default=len(raw))
+    raw = repair_schemes(raw[:end].replace("\\", "/") + raw[end:])
     if "://" not in raw:
         raw = "http://" + raw
     try:
         parts = urlsplit(raw)
         hostname = parts.hostname or ""
     except ValueError:
-        parts, hostname = urlsplit("http://invalid.invalid/"), ""
+        return _unreadable("can't be parsed")
     host = canon_host(hostname)
+    if not host:
+        return _unreadable("has no site name")
+    if not _is_ip(host) and _FORBIDDEN_HOST.search(host):
+        return _unreadable("has characters a real site name can't have")
+    if len(host) > MAX_HOST_CHARS:
+        return _unreadable("has a site name longer than a real one can be")
     try:
         unicode_host = host.encode("ascii").decode("idna") if "xn--" in host else host
     except UnicodeError:
         unicode_host = host
     labels = host.split(".")
-    if len(labels) >= 3 and ".".join(labels[-2:]) in _MULTI_SUFFIXES:
-        registrable = ".".join(labels[-3:])
-    else:
-        registrable = ".".join(labels[-2:])
+    # Longest listed suffix first, so 's3.amazonaws.com' wins over a two-label match.
+    n = next((k for k in (3, 2) if len(labels) > k and ".".join(labels[-k:]) in _MULTI_SUFFIXES), 1)
+    registrable = ".".join(labels[-(n + 1):])
     path_query = unquote(parts.path + ("?" + parts.query if parts.query else "")).lower()
     username = unquote(parts.username or "").lower()
     return ParsedUrl(host, unicode_host, registrable, labels[-1] if labels else "", path_query, username)
@@ -113,6 +142,16 @@ def _on_domain(host: str, domain: str) -> bool:
     return host == domain or host.endswith("." + domain)
 
 
+@register("url.unreadable", kind="url")
+def unreadable(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """scamgate can't tell where the link goes, so none of its other link checks can run."""
+    p = parse(check.url)
+    if p.unreadable:
+        return Hit(f"scamgate can't tell where this link goes (the address {p.unreadable}), so it can't "
+                   "check it. Only open it if you know exactly where it leads.")
+    return None
+
+
 @register("url.blocklist", kind="url")
 def blocklist(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """Domain (or a parent domain) is on the local blocklist."""
@@ -125,7 +164,13 @@ def blocklist(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     return None
 
 
+def _on_shared_hosting(host: str, ctx: RuleContext) -> bool:
+    return any(_on_domain(host, d) for d in lst(ctx.config, "shared_hosting"))
+
+
 def _is_official_brand_host(host: str, ctx: RuleContext) -> bool:
+    if _on_shared_hosting(host, ctx):
+        return False  # a customer's site, even under a brand's domain (x.eastus.cloudapp.azure.com)
     brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
     return any(_on_domain(host, d) for official in brands.values() for d in official)
 
@@ -150,6 +195,8 @@ def known_bad_feed(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     if hit.kind == "host":
         return Hit(f"The host {hit.matched} is listed as phishing/malware by {srcs}.",
                    weight=int(ctx.rule_config.get("host_weight", 75)))
+    if _on_shared_hosting(host, ctx) or not _on_domain(hit.matched, parse(check.url).registrable):
+        return None  # a listed shared suffix (s3.amazonaws.com) says nothing about this one customer's site
     return Hit(f"{host} sits under {hit.matched}, which is listed as phishing by {srcs}.",
                weight=int(ctx.rule_config.get("parent_weight", 50)))
 
@@ -174,9 +221,8 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """Domain imitates a well-known brand (typosquat, homoglyph, or brand name on an unrelated domain)."""
     p = parse(check.url)
     brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
-    for official_list in brands.values():
-        if any(_on_domain(p.host, d) for d in official_list):
-            return None  # it's an official domain of some brand
+    if _is_official_brand_host(p.host, ctx):
+        return None
 
     prefix = _official_domain_prefix(p.unicode_host, brands)
     if prefix:
@@ -193,11 +239,16 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     reg_label = p.unicode_host.split(".")[-2] if p.unicode_host.count(".") >= 1 else p.unicode_host
     reg_tokens = set(re.split(r"[\-_]", reg_label))
     exact_w = int(ctx.rule_config.get("exact_token_weight", 45))
+    # Worked out once per link, not once per brand.
+    affixes = set(lst(ctx.config, "brand_affixes"))
+    typo_exempt = set(lst(ctx.config, "brand_typo_exempt"))
+    padded = tokens + ([joined] if len(tokens) > 1 else [])
+    variants_of = {t: normalize_variants(t) for t in set(padded)}
 
     for brand, official in brands.items():
         official_str = official[0] if official else brand
         for tok in tokens:
-            variants = normalize_variants(tok)
+            variants = variants_of[tok]
             if tok == brand:
                 return Hit(
                     f"'{p.host}' uses the name '{brand}' but is not an official {brand} domain "
@@ -212,16 +263,15 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
             # Edit distance only on the registrable label, and only for longer brand names,
             # to keep false positives like 'apply' ~ 'apple' down.
             if (len(brand) >= 6 and tok in reg_tokens and len(tok) >= 5
-                    and tok not in lst(ctx.config, "brand_typo_exempt")
-                    and any(levenshtein(v, brand) == 1 for v in variants)):
+                    and tok not in typo_exempt
+                    and any(abs(len(v) - len(brand)) <= 1 and levenshtein(v, brand) == 1 for v in variants)):
                 return Hit(
                     f"'{p.host}' is one character away from '{brand}' ('{tok}'), a common "
                     f"typosquat. The real site is {official_str}."
                 )
         if len(brand) >= 5 and brand not in tokens:
-            affixes = set(lst(ctx.config, "brand_affixes"))
-            for tok in tokens + ([joined] if len(tokens) > 1 else []):
-                if any(_brand_with_affixes(v, brand, affixes) for v in normalize_variants(tok)):
+            for tok in padded:
+                if any(_brand_with_affixes(v, brand, affixes) for v in variants_of[tok]):
                     return Hit(
                         f"'{p.host}' embeds the brand '{brand}' in an unofficial domain. "
                         f"The real site is {official_str}."
@@ -233,22 +283,27 @@ def _brand_with_affixes(word: str, brand: str, affixes: set[str]) -> bool:
     """True if `word` is the brand plus only scam-style padding ('appleid', 'securepaypal',
     'amazon-refund'), not an unrelated word that happens to contain it ('applebees', 'revolution',
     'pineapple')."""
+    if brand not in word:
+        return False
+    n = len(word)
+    # pre[i]: word[:i] is all padding. post[i]: word[i:] is all padding. One pass each, so the
+    # check stays linear however often the brand repeats ('paypalpaypal...').
+    pre = [True] + [False] * n
+    for i in range(1, n + 1):
+        pre[i] = any(pre[j] and _is_padding(word[j:i], affixes) for j in range(max(0, i - 14), i))
+    post = [False] * n + [True]
+    for i in range(n - 1, -1, -1):
+        post[i] = any(post[j] and _is_padding(word[i:j], affixes) for j in range(i + 1, min(n, i + 14) + 1))
     start = word.find(brand)
     while start != -1:
-        if _segments_into(word[:start], affixes) and _segments_into(word[start + len(brand):], affixes):
+        if pre[start] and post[start + len(brand)]:
             return True
         start = word.find(brand, start + 1)
     return False
 
 
-def _segments_into(rest: str, affixes: set[str]) -> bool:
-    ok = [True] + [False] * len(rest)
-    for i in range(1, len(rest) + 1):
-        for j in range(max(0, i - 14), i):
-            if ok[j] and (rest[j:i] in affixes or rest[j:i].isdigit()):
-                ok[i] = True
-                break
-    return ok[len(rest)]
+def _is_padding(piece: str, affixes: set[str]) -> bool:
+    return piece in affixes or piece.isdigit()
 
 
 @register("url.ip_host", kind="url")

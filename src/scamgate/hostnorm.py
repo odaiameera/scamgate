@@ -47,9 +47,13 @@ def numeric_ipv4(host: str) -> str | None:
     return str(ipaddress.IPv4Address(value))
 
 
+# Ideographic and halfwidth full stops: browsers read them as '.' in a host name.
+_DOTS = str.maketrans({"。": ".", "．": ".", "｡": "."})
+
+
 def canon_host(host: str) -> str:
     """Lowercase, percent-decoded, no trailing dot, numeric IPv4 in dotted form."""
-    h = unicodedata.normalize("NFKC", unquote(host or "")).strip().lower().rstrip(".")
+    h = unicodedata.normalize("NFKC", unquote(host or "")).translate(_DOTS).strip().lower().rstrip(".")
     if h and not h.startswith("["):
         if (ip := numeric_ipv4(h)) is not None and h != ip:
             return ip

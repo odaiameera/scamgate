@@ -1,5 +1,44 @@
 # Changelog
 
+## [Unreleased]
+
+### Link checks
+- New rule `url.unreadable` (40, asks): a link scamgate can't read never gets `allow`. That covers links
+  that don't parse, site names with characters a browser refuses (spaces, slashes), site names longer than
+  DNS allows, addresses over 8 KiB, and `javascript:`, `data:`, `vbscript:`, `file:` and `blob:` links.
+  No other rule runs on such a link, so its text never appears in a reason.
+- `\` before the query is read as `/`, as browsers do: `https://a.example\.paypal.com/` is checked as
+  `a.example`, not as a PayPal address.
+- Ideographic and halfwidth full stops (`。`, `｡`) in a site name count as dots.
+- Site names over 253 characters are rejected before the brand checks run (a 24 KB one took 37 s).
+- Hook: `http://[::1]:3000/` is read as one link (the address used to be cut at `]`).
+- `amazonaws.com` is no longer an official Amazon domain. Its subdomains are customers' buckets and
+  servers (583 Public Suffix List entries), so a sign-in page there is judged like any other site, and a
+  feed listing of one bucket's host counts.
+- A feed listing of a shared suffix such as `s3.amazonaws.com` no longer condemns every site under it:
+  a parent-domain listing counts only at or below the site's own registrable domain.
+- Three-label shared suffixes in the curated list (`s3.amazonaws.com`) now take effect. Only the last two
+  labels used to be compared, so each bucket was treated as part of `amazonaws.com`.
+- New `lists.shared_hosting` in `rules.yaml` (`amazonaws.com`, `googleusercontent.com`, `cloudapp.azure.com`):
+  a host under one of these is a customer's or user's own site, so it's never an official brand site, and a
+  feed listing counts only for that exact host. `googleusercontent.com` is no longer an official Google
+  domain (Google uses it to sandbox untrusted user content, such as Apps Script web apps). `azure.com` stays
+  official for Microsoft's own portal; only the VM names customers pick under `cloudapp.azure.com` are carved out.
+- Faster link checks, same verdicts: the brand-padding search is linear (a 12,000-character word went from
+  7.5 s to 0.03 s), the typo check skips words whose length rules out a one-letter edit, each link is
+  parsed once per check, and each word's look-alike variants are worked out once instead of once per brand.
+  At the 253-character cap the slowest link went from 23 ms to 1.4 ms. Verdicts on 16,050 generated
+  brand-shaped links are unchanged.
+
+### Hook
+- Shell commands are read the way the shell passes them: quotes and escapes are removed first, and each
+  word that is a link is checked whole. A quoted `@` or `)` can no longer cut a link short and hide its
+  real host.
+- `curl "https://evil""shop.com/"` is now checked as `https://evilshop.com/` (it used to ask as a link
+  built at run time). Variables and `$(…)` still ask.
+- A network command the shell can't split (an unbalanced quote) asks.
+- Bash `/dev/tcp/HOST/PORT` and `/dev/udp/HOST/PORT` are checked like any other destination.
+
 ## [0.3.0] - 2026-10-16
 
 Hermes plugin, and the holes found while making it.
