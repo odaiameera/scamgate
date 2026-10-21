@@ -44,13 +44,17 @@ def when_approvals_off() -> str:
 
 def on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "",
                      tool_call_id: str = "", task_id: str = "", **_: Any) -> dict | None:
-    decision = hook.handle({
-        "hook_event_name": "pre_tool_call",
-        "tool_name": tool_name,
-        "tool_input": args if isinstance(args, dict) else {},
-        "session_id": session_id or task_id or "",
-        "extra": {"tool_call_id": tool_call_id or "", "task_id": task_id or ""},
-    })
+    try:
+        decision = hook.handle({
+            "hook_event_name": "pre_tool_call",
+            "tool_name": tool_name,
+            "tool_input": args if isinstance(args, dict) else {},
+            "session_id": session_id or task_id or "",
+            "extra": {"tool_call_id": tool_call_id or "", "task_id": task_id or ""},
+        })
+    except Exception as exc:  # fail closed like the shell hook; don't rely on how Hermes treats a raising hook
+        return {"action": "block", "message": f"scamgate hook error, failing closed: {type(exc).__name__}: "
+                                              f"{str(exc)[:200]}"}
     if not decision:
         return None
     if decision.get("action") == "approve" and approvals_bypassed(session_id) and when_approvals_off() != "allow":
@@ -64,13 +68,16 @@ def on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = ""
 
 def on_post_tool_call(tool_name: str = "", session_id: str = "", tool_call_id: str = "",
                       task_id: str = "", status: str | None = None, **_: Any) -> None:
-    hook.handle({
-        "hook_event_name": "post_tool_call",
-        "tool_name": tool_name,
-        "tool_input": {},
-        "session_id": session_id or task_id or "",
-        "extra": {"tool_call_id": tool_call_id or "", "task_id": task_id or "", "status": status},
-    })
+    try:
+        hook.handle({
+            "hook_event_name": "post_tool_call",
+            "tool_name": tool_name,
+            "tool_input": {},
+            "session_id": session_id or task_id or "",
+            "extra": {"tool_call_id": tool_call_id or "", "task_id": task_id or "", "status": status},
+        })
+    except Exception:
+        pass  # a post event only records whether you approved; it must never break the tool call
     return None
 
 

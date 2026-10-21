@@ -118,3 +118,15 @@ def test_slash_review_lists_each_host_and_what_you_did():
                      call_id="c")
     lines = plugin.slash("review").splitlines()
     assert any("203.0.113.9" in line and "1 asked" in line and "url.ip_host" in line for line in lines), lines
+
+
+def test_plugin_fails_closed_when_the_gate_errors(monkeypatch):
+    from scamgate import hook
+
+    def broken(payload):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(hook, "handle", broken)
+    out = plugin.on_pre_tool_call(tool_name="terminal", args={"command": "git status"}, session_id="s")
+    assert out["action"] == "block" and "failing closed" in out["message"]
+    assert plugin.on_post_tool_call(tool_name="terminal", session_id="s", tool_call_id="c") is None

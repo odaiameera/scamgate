@@ -105,3 +105,9 @@ def test_only_host_names_are_sent_to_the_registry(live, domain):
 def test_international_domains_are_looked_up_in_ascii_form(live):
     assert domainage.lookup("bücher.com", live=True) == 5
     assert any(u.endswith("domain/xn--bcher-kva.com") for u in live.calls), live.calls
+
+
+def test_names_the_old_idna_rules_would_change_are_not_looked_up(live):
+    # Python's codec turns 'faß' into 'fass', a different domain; no answer beats a wrong one.
+    assert domainage.lookup("faß.com", live=True) is None
+    assert live.calls == []

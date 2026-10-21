@@ -61,7 +61,13 @@ _NON_WEB = re.compile(r"(?i)^(javascript|vbscript|data|file|blob|filesystem):")
 # Characters a browser refuses in a host name (WHATWG forbidden domain code points).
 _FORBIDDEN_HOST = re.compile(r"[\x00-\x20#%/:<>?@\[\\\]^|\x7f]")
 _C0_OR_SPACE = "".join(map(chr, range(0x21)))
-_WEB_SCHEME = re.compile(r"(?i)^(?:https?|wss?|ftp):")
+_WEB_SCHEME = re.compile(r"(?i)^(?:https?|wss?|ftps?):")
+_SCHEME_LINK = re.compile(r"(?i)^[a-z][a-z0-9+.-]*:[/\\]")  # 'sftp://', 'https:/', 'https:\\'
+
+
+def _browser_text(url: str) -> str:
+    """The link as a browser reads it: tabs and newlines dropped anywhere, controls and spaces trimmed."""
+    return re.sub(r"[\t\n\r]", "", url or "").strip(_C0_OR_SPACE)
 
 
 def repair_schemes(text: str) -> str:
@@ -75,8 +81,7 @@ def _unreadable(why: str) -> ParsedUrl:
 
 @lru_cache(maxsize=1024)  # every rule reads the same link; parse it once per check
 def parse(url: str) -> ParsedUrl:
-    # Browsers drop tabs and newlines anywhere, and control characters or spaces at either end.
-    raw = re.sub(r"[\t\n\r]", "", url or "").strip(_C0_OR_SPACE)
+    raw = _browser_text(url)
     if len(raw) > MAX_URL_CHARS:
         return _unreadable("is too long to check")
     if m := _NON_WEB.match(raw):
@@ -321,9 +326,9 @@ def ip_host(check: UrlCheck, ctx: RuleContext) -> Hit | None:
 def userinfo(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """Link has a username part before '@', which browsers ignore and scammers use to fake the address."""
     p = parse(check.url)
-    # Only real links with an explicit web scheme, however it's spelled ('https:/', 'https:\\');
-    # 'mailto:a@b.com' or a bare email isn't a disguised URL.
-    if not p.username or not _WEB_SCHEME.match(check.url.strip(_C0_OR_SPACE)):
+    text = _browser_text(check.url)
+    # Only real links: 'mailto:a@b.com' or a bare email isn't a disguised URL.
+    if not p.username or not (_SCHEME_LINK.match(text) or _WEB_SCHEME.match(text)):
         return None
     brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
     # Name what the link pretends to be only when it's a domain-shaped token; never echo free text,
@@ -338,6 +343,8 @@ def userinfo(check: UrlCheck, ctx: RuleContext) -> Hit | None:
             f"It actually goes to {p.host}. This is a classic way to fake a trusted address.",
             weight=int(ctx.rule_config.get("disguise_weight", 75)),
         )
+    if not _WEB_SCHEME.match(text):
+        return None  # a plain user@host is normal for ssh://, sftp:// and git remotes
     return Hit(
         "The link has a username before the site name. Real sites almost never use this, "
         f"and it can hide where the link really goes: {p.host}."

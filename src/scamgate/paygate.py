@@ -118,9 +118,10 @@ def _num(v: Any) -> float | None:
         else:
             s = s.replace(",", "")
         try:
-            return float(s)
+            n = float(s)
         except ValueError:
             return None
+        return n if math.isfinite(n) else None  # a 309-digit string is inf too
     return None
 
 

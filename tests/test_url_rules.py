@@ -281,3 +281,24 @@ def test_userinfo_disguise_is_caught_however_the_scheme_is_written(url):
 def test_verdict_names_the_host_it_judged():
     assert check_url("https://paypal.com@evil.example/").checked_host == "evil.example"
     assert check_url("javascript:alert(1)").checked_host is None
+
+
+@pytest.mark.parametrize("url", ["ht\ttps://paypal.com@evil.example/login", "https\n://paypal.com@evil.example/login",
+                                 "https:/\r/paypal.com@evil.example/login"])
+def test_userinfo_disguise_is_caught_with_tabs_or_newlines_in_the_scheme(url):
+    # Browsers drop tabs and newlines anywhere in a link, so these all open evil.example.
+    v = check_url(url)
+    assert "url.userinfo" in ids(v) and v.decision is Decision.deny, url
+
+
+@pytest.mark.parametrize("url,fires,decision", [
+    ("sftp://paypal.com@evil.example/x", True, Decision.deny),           # a domain before '@' is a disguise anywhere
+    ("git+https://paypal.com@evil.example/r.git", True, Decision.deny),
+    ("hxxps://paypal.com@evil.example/", True, Decision.deny),
+    ("ftps://someone@files.example/", True, Decision.ask),               # a plain username on a web-ish link asks
+    ("https://someone@shop.example/basket", True, Decision.ask),
+    ("ssh://git@github.com/org/repo.git", False, Decision.allow),        # user@host is normal for ssh
+])
+def test_userinfo_disguise_on_any_scheme_plain_username_only_on_web_links(url, fires, decision):
+    v = check_url(url)
+    assert ("url.userinfo" in ids(v)) is fires and v.decision is decision, (url, v.reasons)

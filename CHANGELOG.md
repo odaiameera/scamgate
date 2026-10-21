@@ -30,7 +30,10 @@
   At the 253-character cap the slowest link went from 23 ms to 1.4 ms. Verdicts on 16,050 generated
   brand-shaped links are unchanged.
 - The fake-address check (`paypal.com@evil.example`) now fires however the scheme is written:
-  `https:/…` and `https:\\…` reach the same host as `https://…`, so they're judged the same.
+  `https:/…`, `https:\\…` and tabs or newlines inside the scheme reach the same host as `https://…`, so
+  they're judged the same. A domain or brand before the `@` counts as a disguise on any scheme
+  (`sftp://`, `git+https://`, `hxxps://`); a plain username is flagged only on web links, so
+  `ssh://git@github.com/…` no longer asks.
 
 ### Hook
 - Shell commands are read the way the shell passes them: quotes and escapes are removed first, and each
@@ -56,10 +59,13 @@
 
 ### Input checks
 - Payment `amount` and `budget` must be real numbers: `inf`, `nan` and a negative budget are rejected.
-- In the hook, a payment tool call whose amount is JSON `Infinity` or `NaN` asks ("can't read how much")
-  instead of failing with an internal error.
+- In the hook, a payment tool call whose amount is JSON `Infinity` or `NaN`, or a digit string too long
+  to be a number, asks ("can't read how much") instead of failing with an internal error.
+- The Hermes plugin fails closed: if the gate itself errors on a pre-tool call, the call is blocked, as
+  the shell hook already did.
 - Domain-age lookups (`SCAMGATE_RDAP=live`) send only a plain host name to the registry, and look up
-  international names in their `xn--` form (they used to fail).
+  international names in their `xn--` form (they used to fail). A name Python's older IDNA rules would
+  change (`faß` to `fass`) isn't looked up at all, rather than looked up wrong.
 - `update-feeds` refuses a feed download over 256 MB and keeps the old cache.
 
 ### MCP server and Hermes plugin
