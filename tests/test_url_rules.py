@@ -276,3 +276,8 @@ def test_brand_padding_search_is_linear():
 def test_userinfo_disguise_is_caught_however_the_scheme_is_written(url):
     v = check_url(url)
     assert "url.userinfo" in ids(v) and v.decision is Decision.deny, url
+
+
+def test_verdict_names_the_host_it_judged():
+    assert check_url("https://paypal.com@evil.example/").checked_host == "evil.example"
+    assert check_url("javascript:alert(1)").checked_host is None

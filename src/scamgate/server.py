@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
-
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
-from . import engine
-from .models import PaymentCheck
+from . import domainage, tools
+from .models import Verdict
 
 mcp = MCPServer(
     "scamgate",
@@ -19,54 +18,36 @@ mcp = MCPServer(
 )
 
 
-@mcp.tool()
-def check_url(url: str, intent: str | None = None) -> dict[str, Any]:
-    """Check a link before opening it.
-
-    Args:
-        url: The full URL the agent is about to open.
-        intent: What the agent is trying to do, e.g. "book a hotel in Galway".
-
-    Returns a verdict: decision (allow | ask | deny), risk_score 0-100, and plain-English reasons.
-    """
-    return engine.check_url(url, intent).model_dump(mode="json")
+def _reads_only(title: str, *, online: bool = False) -> ToolAnnotations:
+    """Both tools only read local state. check_url goes online only with SCAMGATE_RDAP=live."""
+    return ToolAnnotations(title=title, read_only_hint=True, destructive_hint=False, idempotent_hint=True,
+                           open_world_hint=online)
 
 
-@mcp.tool()
+@mcp.tool(description=tools.URL_DESCRIPTION,
+          annotations=_reads_only("Check a link", online=domainage.mode() == "live"))
+def check_url(url: tools.Url, intent: tools.Intent = None) -> Verdict:
+    return tools.check_url(tools.UrlArgs(url=url, intent=intent))
+
+
+@mcp.tool(description=tools.PAYMENT_DESCRIPTION, annotations=_reads_only("Check a payment"))
 def check_payment(
-    payee_name: str,
-    payee_account: str,
-    amount: float,
-    currency: str,
-    method: Literal["card", "bank_transfer", "crypto", "gift_card", "other"],
-    context_text: str | None = None,
-    is_new_payee: bool | None = None,
-    bank_details_changed: bool | None = None,
-    budget: float | None = None,
-    vop_result: Literal["match", "close_match", "no_match", "unavailable"] | None = None,
-) -> dict[str, Any]:
-    """Check a payment before making it.
-
-    Args:
-        payee_name: Who is being paid.
-        payee_account: IBAN, wallet address, merchant id, etc.
-        amount: Amount to pay.
-        currency: e.g. EUR, GBP, USDT.
-        method: card, bank_transfer, crypto, gift_card or other.
-        context_text: The messages or page text that led to this payment.
-        is_new_payee: True if this payee has never been paid before.
-        bank_details_changed: True if the payee's account details changed recently.
-        budget: The spending limit the human gave for this task.
-        vop_result: Verification of Payee result, if available.
-
-    Returns a verdict: decision (allow | ask | deny), risk_score 0-100, and plain-English reasons.
-    """
-    check = PaymentCheck(
-        payee_name=payee_name, payee_account=payee_account, amount=amount, currency=currency,
-        method=method, context_text=context_text, is_new_payee=is_new_payee,
-        bank_details_changed=bank_details_changed, budget=budget, vop_result=vop_result,
-    )
-    return engine.check_payment(check).model_dump(mode="json")
+    payee_name: tools.PayeeName,
+    payee_account: tools.PayeeAccount,
+    amount: tools.Amount,
+    currency: tools.Currency,
+    method: tools.Method,
+    context_text: tools.ContextText = None,
+    is_new_payee: tools.IsNewPayee = None,
+    bank_details_changed: tools.BankDetailsChanged = None,
+    budget: tools.Budget = None,
+    vop_result: tools.Vop = None,
+) -> Verdict:
+    return tools.check_payment(tools.PaymentArgs(
+        payee_name=payee_name, payee_account=payee_account, amount=amount, currency=currency, method=method,
+        context_text=context_text, is_new_payee=is_new_payee, bank_details_changed=bank_details_changed,
+        budget=budget, vop_result=vop_result,
+    ))
 
 
 def run() -> None:

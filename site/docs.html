@@ -361,7 +361,8 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
               vop_result: "match" | "close_match" | "no_match" | "unavailable" | None = None) -&gt; Verdict</code></pre>
       <p><code>Verdict</code> = <code>decision</code>, <code>risk_score</code>, <code>reasons[]</code>
         (<code>rule_id</code>, <code>explanation</code>, <code>weight</code>), <code>summary</code>,
-        <code>warnings[]</code>, <code>advisory</code>.</p>
+        <code>checked_host</code> (for links: the host a browser would open), <code>warnings[]</code>,
+        <code>advisory</code>. Both tools are marked read-only and publish this as their output schema.</p>
     </section>
 
     <section id="limits">

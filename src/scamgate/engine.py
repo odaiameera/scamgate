@@ -42,12 +42,14 @@ def _run(kind: Kind, check: Any, config: dict[str, Any] | None,
         elif stale := feeds.stale_feeds():
             warnings.append(f"Feed cache older than {feeds_mod.STALE_AFTER_HOURS}h for: "
                             f"{', '.join(sorted(stale))}. Run `scamgate update-feeds`.")
-    unreadable = False
+    unreadable, checked_host = False, None
     if kind == "url":
         from .rules.url import parse
 
+        parsed = parse(check.url)
         # Nothing else can judge a link scamgate can't read, and its text must not reach a reason.
-        unreadable = bool(parse(check.url).unreadable)
+        unreadable = bool(parsed.unreadable)
+        checked_host = parsed.host or None
     reasons: list[Reason] = []
     for rule in rules_for(kind):
         if unreadable and rule.rule_id != "url.unreadable":
@@ -83,7 +85,7 @@ def _run(kind: Kind, check: Any, config: dict[str, Any] | None,
     else:
         decision = Decision.allow
     return Verdict(decision=decision, risk_score=score, reasons=reasons,
-                   summary=_summary(kind, decision, reasons), warnings=warnings)
+                   summary=_summary(kind, decision, reasons), checked_host=checked_host, warnings=warnings)
 
 
 def _summary(kind: Kind, decision: Decision, reasons: list[Reason]) -> str:

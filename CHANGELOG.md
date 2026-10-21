@@ -62,6 +62,21 @@
   international names in their `xn--` form (they used to fail).
 - `update-feeds` refuses a feed download over 256 MB and keeps the old cache.
 
+### MCP server and Hermes plugin
+- Both MCP tools are marked read-only (`readOnlyHint`, not destructive, idempotent). `check_url` reports
+  `openWorldHint` only when domain-age lookups go online (`SCAMGATE_RDAP=live`).
+- Both tools return a typed `Verdict` with a published output schema, so clients get structured content.
+- New `checked_host` in every link verdict: the host a browser would open. Empty for payments and for
+  links scamgate can't read.
+- Input limits on the MCP tools (a 64 KiB link, 2,000-character intent, 20,000-character context). A link
+  over 8 KiB but under the limit still gets a verdict (`url.unreadable` asks) rather than an error.
+- The Hermes plugin's tools now take the same arguments as the MCP tools, from one shared definition
+  (`scamgate.tools`). `scamgate_check_payment` used to drop `budget`, `is_new_payee`,
+  `bank_details_changed` and `vop_result`, so the over-budget check never ran there. Bad arguments come
+  back as an error instead of crashing the tool.
+- Hermes `/scamgate review` lists each host with how many times it asked, what you did, and the top rule.
+  It used to print a line of `?` per host.
+
 ## [0.3.0] - 2026-10-16
 
 Hermes plugin, and the holes found while making it.

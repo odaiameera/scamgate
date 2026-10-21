@@ -41,6 +41,11 @@ class Verdict(BaseModel):
     risk_score: int = Field(ge=0, le=100)
     reasons: list[Reason] = Field(default_factory=list)
     summary: str
+    checked_host: str | None = Field(
+        default=None,
+        description="For links: the host scamgate judged, the one a browser would open. If it isn't where you "
+                    "expected the link to go, treat that as a warning. Empty for payments and unreadable links.",
+    )
     warnings: list[str] = Field(default_factory=list, description="Notes about the check itself, e.g. a stale feed cache")
     advisory: str = (
         "scamgate is advisory. It can miss scams and flag legitimate actions; "
