@@ -19,6 +19,11 @@
   a parent-domain listing counts only at or below the site's own registrable domain.
 - Three-label shared suffixes in the curated list (`s3.amazonaws.com`) now take effect. Only the last two
   labels used to be compared, so each bucket was treated as part of `amazonaws.com`.
+- New `lists.shared_hosting` in `rules.yaml` (`amazonaws.com`, `googleusercontent.com`, `cloudapp.azure.com`):
+  a host under one of these is a customer's or user's own site, so it's never an official brand site, and a
+  feed listing counts only for that exact host. `googleusercontent.com` is no longer an official Google
+  domain (Google uses it to sandbox untrusted user content, such as Apps Script web apps). `azure.com` stays
+  official for Microsoft's own portal; only the VM names customers pick under `cloudapp.azure.com` are carved out.
 
 ### Hook
 - Shell commands are read the way the shell passes them: quotes and escapes are removed first, and each

@@ -157,3 +157,20 @@ def test_a_listed_bucket_on_shared_hosting_is_caught():
 def test_parent_listing_still_covers_subdomains_of_an_ordinary_domain():
     v = check_url("https://login.bad-shop.example/", feeds=_domain_feed("bad-shop.example"))
     assert "url.known_bad_feed" in {r.rule_id for r in v.reasons}
+
+
+@pytest.mark.parametrize("listed,url", [
+    ("cloudapp.azure.com", "https://myvm.eastus.cloudapp.azure.com/"),
+    ("eastus.cloudapp.azure.com", "https://myvm.eastus.cloudapp.azure.com/"),
+    ("googleusercontent.com", "https://lh3.googleusercontent.com/a/photo.jpg"),
+    ("execute-api.us-east-1.amazonaws.com", "https://abc123.execute-api.us-east-1.amazonaws.com/prod"),
+])
+def test_parent_listing_on_shared_hosting_does_not_condemn_other_customers(listed, url):
+    v = check_url(url, feeds=_domain_feed(listed))
+    assert "url.known_bad_feed" not in {r.rule_id for r in v.reasons}, (listed, url)
+
+
+@pytest.mark.parametrize("host", ["myvm.eastus.cloudapp.azure.com", "n-abc-0lu-script.googleusercontent.com"])
+def test_exact_host_listing_on_shared_hosting_counts(host):
+    v = check_url(f"https://{host}/", feeds=_domain_feed(host))
+    assert "url.known_bad_feed" in {r.rule_id for r in v.reasons} and v.decision is Decision.deny

@@ -50,7 +50,7 @@ lists:
     microsoft:  [microsoft.com, microsoftonline.com, live.com, outlook.com, office.com, office365.com, azure.com, xbox.com]
     outlook:    [outlook.com, live.com, microsoft.com, office.com]
     office365:  [office.com, office365.com, microsoft.com]
-    google:     [google.com, google.ie, google.co.uk, gmail.com, youtube.com, googleusercontent.com]
+    google:     [google.com, google.ie, google.co.uk, gmail.com, youtube.com]
     gmail:      [gmail.com, google.com]
     netflix:    [netflix.com]
     facebook:   [facebook.com, fb.com, meta.com]
@@ -111,7 +111,15 @@ lists:
                   orders, delivery, track, tracking, case, review, reviews, limited, limit, suspend, suspended,
                   locked, lock, block, blocked, protect, protection, fraud, team, official, net, com, now, here, x]
 
+  # Shared hosting: each hostname under these is a different customer's or user's site, so it's never an
+  # official brand site, and a feed listing counts only for that exact host (never as a parent domain).
+  #   amazonaws.com         S3 buckets, EC2, API Gateway (583 Public Suffix List entries)
+  #   googleusercontent.com Google's sandbox for untrusted user content (Apps Script web apps, Sites embeds)
+  #   cloudapp.azure.com    Azure VM names customers pick: <label>.<region>.cloudapp.azure.com
+  shared_hosting: [amazonaws.com, googleusercontent.com, cloudapp.azure.com]
+
   # Big shared platforms (file hosts, form builders, shorteners, identity providers).
+  # Unlike shared_hosting, one host serves many users' pages here, so even an exact host listing is ignored.
   # Feeds list single bad pages on these, so a host/domain hit here is ignored; only an
   # exact-URL listing counts. Each entry also covers its subdomains.
   feed_host_ignore:

@@ -162,7 +162,13 @@ def blocklist(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     return None
 
 
+def _on_shared_hosting(host: str, ctx: RuleContext) -> bool:
+    return any(_on_domain(host, d) for d in lst(ctx.config, "shared_hosting"))
+
+
 def _is_official_brand_host(host: str, ctx: RuleContext) -> bool:
+    if _on_shared_hosting(host, ctx):
+        return False  # a customer's site, even under a brand's domain (x.eastus.cloudapp.azure.com)
     brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
     return any(_on_domain(host, d) for official in brands.values() for d in official)
 
@@ -187,7 +193,7 @@ def known_bad_feed(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     if hit.kind == "host":
         return Hit(f"The host {hit.matched} is listed as phishing/malware by {srcs}.",
                    weight=int(ctx.rule_config.get("host_weight", 75)))
-    if not _on_domain(hit.matched, parse(check.url).registrable):
+    if _on_shared_hosting(host, ctx) or not _on_domain(hit.matched, parse(check.url).registrable):
         return None  # a listed shared suffix (s3.amazonaws.com) says nothing about this one customer's site
     return Hit(f"{host} sits under {hit.matched}, which is listed as phishing by {srcs}.",
                weight=int(ctx.rule_config.get("parent_weight", 50)))
@@ -213,9 +219,8 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """Domain imitates a well-known brand (typosquat, homoglyph, or brand name on an unrelated domain)."""
     p = parse(check.url)
     brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
-    for official_list in brands.values():
-        if any(_on_domain(p.host, d) for d in official_list):
-            return None  # it's an official domain of some brand
+    if _is_official_brand_host(p.host, ctx):
+        return None
 
     prefix = _official_domain_prefix(p.unicode_host, brands)
     if prefix:
