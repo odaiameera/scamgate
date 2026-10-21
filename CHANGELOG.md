@@ -13,6 +13,15 @@
 - Site names over 253 characters are rejected before the brand checks run (a 24 KB one took 37 s).
 - Hook: `http://[::1]:3000/` is read as one link (the address used to be cut at `]`).
 
+### Hook
+- Shell commands are read the way the shell passes them: quotes and escapes are removed first, and each
+  word that is a link is checked whole. A quoted `@` or `)` can no longer cut a link short and hide its
+  real host.
+- `curl "https://evil""shop.com/"` is now checked as `https://evilshop.com/` (it used to ask as a link
+  built at run time). Variables and `$(…)` still ask.
+- A network command the shell can't split (an unbalanced quote) asks.
+- Bash `/dev/tcp/HOST/PORT` and `/dev/udp/HOST/PORT` are checked like any other destination.
+
 ## [0.3.0] - 2026-10-16
 
 Hermes plugin, and the holes found while making it.

@@ -70,7 +70,7 @@ def test_code_fetching_a_literal_url_via_variable_is_fine(cache):
     ("curl http://3405803781/x", "ask"),                # decimal IPv4
     ("curl http://0xcb007105/x", "ask"),                # hex IPv4
     ("curl http://0313.0.0.1/x", "ask"),                # octal IPv4 part
-    ("curl \"https://evil\"\"shop.com/\"", "ask"),      # shell string concat
+    ("curl \"https://evil\"\"shop.com/\"", "deny"),     # shell joins the quotes into one word; that word is checked
     ("H=evilshop.com; curl https://$H/", "ask"),        # variable host
     ("curl https://${HOST}/pay", "ask"),
     ("python3 - <<X\nimport urllib.request as u; u.urlopen('https://evil'+'shop.com')\nX", "ask"),
@@ -293,3 +293,37 @@ def test_claude_post_tool_use_failure_means_it_ran(cache):
     hook.run({"hook_event_name": "PostToolUseFailure", "tool_name": "WebFetch", "session_id": "s",
               "tool_use_id": "t1"})
     assert list(asklog.read_outcomes().values()) == ["ran"]
+
+
+# ---------------------------------------------------------------- shell words: the destination the shell passes
+
+@pytest.mark.parametrize("cmd", [
+    'curl -s https://paypal.com"@"evilshop.com/login',
+    "curl -s 'https://paypal.com'@evilshop.com/login",
+    "curl -s https://paypal.com\\@evilshop.com/login",
+    "curl -s 'https://paypal.com)@evilshop.com/login'",
+])
+def test_checked_host_is_the_one_the_shell_passes(cache, cmd):
+    # Quotes and escapes are removed before curl sees the word, so the real host is evilshop.com.
+    assert bash(cmd) == "deny", cmd
+
+
+def test_curl_range_in_host_asks(cache):
+    assert bash('curl -s "https://evilsho[p-p].com/login"') == "ask"
+
+
+def test_bash_dev_tcp_host_is_checked(cache):
+    assert bash("exec 3<>/dev/tcp/evilshop.com/80") == "deny"
+    assert bash("exec 3<>/dev/tcp/localhost/3000") == "silent"
+
+
+def test_unbalanced_quote_in_a_network_command_asks(cache):
+    assert bash("curl https://example.org'") == "ask"
+
+
+@pytest.mark.parametrize("cmd", [
+    "curl -H 'Accept: application/json' https://www.python.org/",
+    "curl --url=https://www.python.org/",
+])
+def test_quoted_flags_around_a_clean_link_stay_quiet(cache, cmd):
+    assert bash(cmd) == "silent", cmd
