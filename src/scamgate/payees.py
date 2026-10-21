@@ -44,7 +44,7 @@ def _salt(create: bool = False) -> bytes | None:
     if not p.exists():
         if not create:
             return None
-        guard._private_write(p, secrets.token_hex(16))
+        guard.create_once(p, secrets.token_hex(16))
     return p.read_text("utf-8").strip().encode()
 
 

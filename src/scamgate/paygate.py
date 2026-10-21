@@ -17,6 +17,7 @@ Like the rest of the hook it never says "allow": a low-risk payment passes silen
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -107,7 +108,7 @@ def _num(v: Any) -> float | None:
     if isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
-        return float(v)
+        return float(v) if math.isfinite(v) else None  # JSON "Infinity"/"NaN" isn't an amount scamgate can read
     if isinstance(v, str):
         s = re.sub(r"[^\d.,-]", "", v)
         if s.count(",") and s.count("."):
@@ -117,9 +118,10 @@ def _num(v: Any) -> float | None:
         else:
             s = s.replace(",", "")
         try:
-            return float(s)
+            n = float(s)
         except ValueError:
             return None
+        return n if math.isfinite(n) else None  # a 309-digit string is inf too
     return None
 
 

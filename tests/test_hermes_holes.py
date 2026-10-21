@@ -284,6 +284,13 @@ def test_asking_scamgate_about_a_payment_is_never_blocked():
     assert decide("scamgate_check_payment", args) == "silent"
 
 
+@pytest.mark.parametrize("tool", ["mcp__notscamgate__check_url", "mcp__evil-scamgate__check_payment",
+                                  "mcp__x__scamgate_check_url"])
+def test_a_tool_named_like_scamgate_is_still_gated(tool):
+    # Only scamgate's own tool names skip the gate; another server's tool can't borrow them.
+    assert decide(tool, {"url": "https://evilshop.com/x"}) == "deny", tool
+
+
 # ---------------------------------------------------------------- other Hermes profiles
 
 def test_other_profiles_config_is_protected(tmp_path):

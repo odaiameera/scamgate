@@ -289,3 +289,63 @@ def test_unknown_pth_files_fail_integrity(monkeypatch, tmp_path):
     (tmp_path / "zz_evil.pth").write_text("import os; os.environ['X']='1'\n")
     (tmp_path / "distutils-precedence.pth").write_text("import os\n")
     assert integrity.unexpected_pth([tmp_path]) == ["zz_evil.pth"]
+
+
+# ---------------------------------------------------------------- state files: private, single key, no silent loss
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_state_dir_and_ask_log_are_private(tmp_path, monkeypatch):
+    import stat
+
+    from scamgate import asklog, state
+
+    d = tmp_path / "scamgate"
+    d.mkdir(mode=0o755)
+    d.chmod(0o755)  # what an older install left behind
+    monkeypatch.setenv(state.ENV_STATE_DIR, str(d))
+    asklog.log_check(tool="t", decision="approve", risk_score=40, rule_ids=["r"], targets=[],
+                     hosts=["shop-a.example"], stated_reason="", session="s", call_id="c")
+    asklog.record_outcome(asklog.make_key("s", "c"), "ran")
+    assert stat.S_IMODE(d.stat().st_mode) & 0o077 == 0
+    for name in ("asks.jsonl", "outcomes.jsonl"):
+        assert stat.S_IMODE((d / name).stat().st_mode) & 0o077 == 0, name
+
+
+def test_signing_key_made_by_another_process_is_kept(tmp_path, monkeypatch):
+    from scamgate import guard, state
+
+    monkeypatch.setenv(state.ENV_STATE_DIR, str(tmp_path / "fresh"))
+    real = guard.secrets.token_hex
+
+    def another_process_got_there_first(n=32):
+        state.ensure_state_dir()
+        (state.state_dir() / "state.key").write_text("k" * 64)
+        return real(n)
+
+    monkeypatch.setattr(guard.secrets, "token_hex", another_process_got_there_first)
+    assert guard._key() == b"k" * 64
+
+
+def test_payee_salt_made_by_another_process_is_kept(tmp_path, monkeypatch):
+    from scamgate import state
+
+    monkeypatch.setenv(state.ENV_STATE_DIR, str(tmp_path / "fresh"))
+    real = payees.secrets.token_hex
+
+    def another_process_got_there_first(n=16):
+        state.ensure_state_dir()
+        (state.state_dir() / "payees.salt").write_text("s" * 32)
+        return real(n)
+
+    monkeypatch.setattr(payees.secrets, "token_hex", another_process_got_there_first)
+    assert payees._salt(create=True) == b"s" * 32
+
+
+def test_override_rules_that_cant_be_verified_are_reported():
+    from scamgate import state
+
+    overrides.add("shop-a.example", "deny")
+    assert engine.check_url("https://shop-a.example/").decision is Decision.deny
+    (state.state_dir() / "state.key").unlink()
+    v = engine.check_url("https://shop-a.example/")
+    assert any("override" in w for w in v.warnings), v.warnings

@@ -174,3 +174,34 @@ def test_parent_listing_on_shared_hosting_does_not_condemn_other_customers(liste
 def test_exact_host_listing_on_shared_hosting_counts(host):
     v = check_url(f"https://{host}/", feeds=_domain_feed(host))
     assert "url.known_bad_feed" in {r.rule_id for r in v.reasons} and v.decision is Decision.deny
+
+
+class _Resp:
+    def __init__(self, body: bytes):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, n=-1):
+        return self.body if n < 0 else self.body[:n]
+
+
+def test_oversized_feed_download_is_refused(monkeypatch):
+    import urllib.request
+
+    monkeypatch.setattr(feeds, "MAX_FEED_BYTES", 1000)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: _Resp(b"x.example\n" * 500))
+    with pytest.raises(ValueError):
+        feeds._download("https://feed.example/list.txt")
+
+
+def test_feed_download_under_the_cap_is_read(monkeypatch):
+    import urllib.request
+
+    monkeypatch.setattr(feeds, "MAX_FEED_BYTES", 1000)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: _Resp(b"x.example\n" * 10))
+    assert feeds._download("https://feed.example/list.txt") == "x.example\n" * 10

@@ -68,6 +68,7 @@ $ uv run scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"
     }
   ],
   "summary": "Do not proceed with this link. Main concern: 'paypa1.com' disguises 'paypal' with look-alike characters ('paypa1'). The real site is paypal.com.",
+  "checked_host": "paypa1.com",
   "warnings": [],
   "advisory": "scamgate is advisory. It can miss scams and flag legitimate actions; a human should make the final call on anything flagged."
 }
@@ -136,7 +137,9 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
 ```
 
 `Verdict` = `decision`, `risk_score`, `reasons[]` (`rule_id`, `explanation`, `weight`),
-`summary`, `warnings[]`, `advisory`.
+`summary`, `checked_host` (for links: the host a browser would open), `warnings[]`, `advisory`.
+Both tools are marked read-only and publish this as their output schema, so MCP clients get it as
+structured content.
 
 ## Enforce it with a hook
 

@@ -29,6 +29,11 @@
   parsed once per check, and each word's look-alike variants are worked out once instead of once per brand.
   At the 253-character cap the slowest link went from 23 ms to 1.4 ms. Verdicts on 16,050 generated
   brand-shaped links are unchanged.
+- The fake-address check (`paypal.com@evil.example`) now fires however the scheme is written:
+  `https:/…`, `https:\\…` and tabs or newlines inside the scheme reach the same host as `https://…`, so
+  they're judged the same. A domain or brand before the `@` counts as a disguise on any scheme
+  (`sftp://`, `git+https://`, `hxxps://`); a plain username is flagged only on web links, so
+  `ssh://git@github.com/…` no longer asks.
 
 ### Hook
 - Shell commands are read the way the shell passes them: quotes and escapes are removed first, and each
@@ -38,6 +43,45 @@
   built at run time). Variables and `$(…)` still ask.
 - A network command the shell can't split (an unbalanced quote) asks.
 - Bash `/dev/tcp/HOST/PORT` and `/dev/udp/HOST/PORT` are checked like any other destination.
+- Only scamgate's own check tools skip the gate (`mcp__scamgate__check_url`, `mcp_scamgate_check_url`,
+  `scamgate_check_url` and the `check_payment` forms). A tool whose name merely contains them, like
+  `mcp__notscamgate__check_url`, used to skip every check, tamper checks included. If you registered the
+  MCP server under another name, asking it about a bad link may now ask you first.
+
+### Local state
+- The state dir is created private (0700), and an existing `…/scamgate` state dir from an older install is
+  tightened to 0700. A custom `SCAMGATE_STATE_DIR` is left as you set it. The ask log (`asks.jsonl`,
+  `outcomes.jsonl`) is written 0600: it shows which sites your agent tried to visit.
+- The signing key and payee salt are created once, even when two scamgate processes start together. One
+  used to overwrite the other's key, and records already signed with it stopped verifying.
+- If override rules can't be verified (the signing key is missing or was changed, or a line was edited),
+  checks now warn instead of dropping your deny rules silently.
+
+### Input checks
+- Payment `amount` and `budget` must be real numbers: `inf`, `nan` and a negative budget are rejected.
+- In the hook, a payment tool call whose amount is JSON `Infinity` or `NaN`, or a digit string too long
+  to be a number, asks ("can't read how much") instead of failing with an internal error.
+- The Hermes plugin fails closed: if the gate itself errors on a pre-tool call, the call is blocked, as
+  the shell hook already did.
+- Domain-age lookups (`SCAMGATE_RDAP=live`) send only a plain host name to the registry, and look up
+  international names in their `xn--` form (they used to fail). A name Python's older IDNA rules would
+  change (`faß` to `fass`) isn't looked up at all, rather than looked up wrong.
+- `update-feeds` refuses a feed download over 256 MB and keeps the old cache.
+
+### MCP server and Hermes plugin
+- Both MCP tools are marked read-only (`readOnlyHint`, not destructive, idempotent). `check_url` reports
+  `openWorldHint` only when domain-age lookups go online (`SCAMGATE_RDAP=live`).
+- Both tools return a typed `Verdict` with a published output schema, so clients get structured content.
+- New `checked_host` in every link verdict: the host a browser would open. Empty for payments and for
+  links scamgate can't read.
+- Input limits on the MCP tools (a 64 KiB link, 2,000-character intent, 20,000-character context). A link
+  over 8 KiB but under the limit still gets a verdict (`url.unreadable` asks) rather than an error.
+- The Hermes plugin's tools now take the same arguments as the MCP tools, from one shared definition
+  (`scamgate.tools`). `scamgate_check_payment` used to drop `budget`, `is_new_payee`,
+  `bank_details_changed` and `vop_result`, so the over-budget check never ran there. Bad arguments come
+  back as an error instead of crashing the tool.
+- Hermes `/scamgate review` lists each host with how many times it asked, what you did, and the top rule.
+  It used to print a line of `?` per host.
 
 ## [0.3.0] - 2026-10-16
 

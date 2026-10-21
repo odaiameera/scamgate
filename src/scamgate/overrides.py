@@ -52,19 +52,30 @@ def add(host: str, decision: str, *, rule: str | None = None, note: str = "") ->
 
 
 def load() -> list[dict]:
+    return load_checked()[0]
+
+
+def load_checked() -> tuple[list[dict], int]:
+    """(rules that verify, number of lines that don't). A missing or changed key fails every line,
+    and the engine says so rather than dropping your rules silently."""
     p = overrides_path()
     if not p.exists():
-        return []
-    out = []
+        return [], 0
+    out, bad = [], 0
     for line in p.read_text("utf-8").splitlines():
+        if not line.strip():
+            continue
         try:
             rec = json.loads(line)
         except json.JSONDecodeError:
+            bad += 1
             continue
         if (isinstance(rec, dict) and rec.get("host") and rec.get("decision") in ("allow", "deny")
                 and guard.verify(rec)):
             out.append(rec)
-    return out
+        else:
+            bad += 1
+    return out, bad
 
 
 def deny_match(host: str, items: list[dict]) -> dict | None:

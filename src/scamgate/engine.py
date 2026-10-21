@@ -42,12 +42,14 @@ def _run(kind: Kind, check: Any, config: dict[str, Any] | None,
         elif stale := feeds.stale_feeds():
             warnings.append(f"Feed cache older than {feeds_mod.STALE_AFTER_HOURS}h for: "
                             f"{', '.join(sorted(stale))}. Run `scamgate update-feeds`.")
-    unreadable = False
+    unreadable, checked_host = False, None
     if kind == "url":
         from .rules.url import parse
 
+        parsed = parse(check.url)
         # Nothing else can judge a link scamgate can't read, and its text must not reach a reason.
-        unreadable = bool(parse(check.url).unreadable)
+        unreadable = bool(parsed.unreadable)
+        checked_host = parsed.host or None
     reasons: list[Reason] = []
     for rule in rules_for(kind):
         if unreadable and rule.rule_id != "url.unreadable":
@@ -63,8 +65,14 @@ def _run(kind: Kind, check: Any, config: dict[str, Any] | None,
                 continue
             reasons.append(Reason(rule_id=rule.rule_id, explanation=h.explanation, weight=min(w, 100)))
 
-    if kind == "url" and not unreadable and (items := overrides_mod.load()):
-        reasons = _apply_overrides(check.url, reasons, items, warnings)
+    if kind == "url":
+        items, bad = overrides_mod.load_checked()
+        if bad:
+            warnings.append(f"{bad} of your scamgate override rules can't be verified (its signing key is missing or "
+                            "was changed, or the line was edited by hand), so they're ignored. Check the scamgate "
+                            "state dir.")
+        if items and not unreadable:
+            reasons = _apply_overrides(check.url, reasons, items, warnings)
     warnings += extra_warnings or []
 
     reasons.sort(key=lambda r: r.weight, reverse=True)
@@ -77,7 +85,7 @@ def _run(kind: Kind, check: Any, config: dict[str, Any] | None,
     else:
         decision = Decision.allow
     return Verdict(decision=decision, risk_score=score, reasons=reasons,
-                   summary=_summary(kind, decision, reasons), warnings=warnings)
+                   summary=_summary(kind, decision, reasons), checked_host=checked_host, warnings=warnings)
 
 
 def _summary(kind: Kind, decision: Decision, reasons: list[Reason]) -> str:

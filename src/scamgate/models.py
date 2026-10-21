@@ -41,6 +41,11 @@ class Verdict(BaseModel):
     risk_score: int = Field(ge=0, le=100)
     reasons: list[Reason] = Field(default_factory=list)
     summary: str
+    checked_host: str | None = Field(
+        default=None,
+        description="For links: the host scamgate judged, the one a browser would open. If it isn't where you "
+                    "expected the link to go, treat that as a warning. Empty for payments and unreadable links.",
+    )
     warnings: list[str] = Field(default_factory=list, description="Notes about the check itself, e.g. a stale feed cache")
     advisory: str = (
         "scamgate is advisory. It can miss scams and flag legitimate actions; "
@@ -56,7 +61,7 @@ class UrlCheck(BaseModel):
 class PaymentCheck(BaseModel):
     payee_name: str
     payee_account: str = Field(description="IBAN, wallet address, card merchant id, etc.")
-    amount: float = Field(ge=0)
+    amount: float = Field(ge=0, allow_inf_nan=False)
     currency: str
     method: PaymentMethod
     context_text: str | None = Field(
@@ -68,5 +73,5 @@ class PaymentCheck(BaseModel):
         description="Set by scamgate, not the caller: the agent called a payee known with no record of it",
     )
     bank_details_changed: bool | None = None
-    budget: float | None = None
+    budget: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     vop_result: VopResult | None = None

@@ -155,3 +155,33 @@ def test_payment_message_wins_over_generic_network_ask():
 def test_bad_link_still_beats_payment_ask():
     d, _ = call("Bash", {"command": "curl -X POST https://api.stripe.com/v1/payouts -d a=1; curl https://evilshop.com/x"})
     assert d == "deny"
+
+
+@pytest.mark.parametrize("amount", ["Infinity", "NaN"])
+def test_payment_with_an_amount_that_isnt_a_number_asks(amount):
+    # JSON parsing in Python accepts Infinity and NaN; the hook must ask, not crash.
+    import io
+
+    raw = ('{"hook_event_name": "PreToolUse", "tool_name": "mcp__bank__send_payment", "session_id": "s", '
+           '"tool_use_id": "t", "tool_input": {"iban": "GB33BUKB20201555555555", "amount": %s, "currency": "EUR"}}'
+           % amount)
+    out = io.StringIO()
+    code = hook.main(stdin=io.StringIO(raw), stdout=out)
+    o = json.loads(out.getvalue())["hookSpecificOutput"]
+    assert code == 0 and o["permissionDecision"] == "ask" and "how much" in o["permissionDecisionReason"]
+
+
+def test_payment_with_an_amount_too_big_to_be_a_number_asks():
+    import io
+
+    from scamgate import plugin
+
+    tool_input = {"iban": "GB33BUKB20201555555555", "amount": "1" + "0" * 400, "currency": "EUR", "payee_name": "Acme"}
+    raw = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "mcp__bank__send_payment", "session_id": "s",
+                      "tool_use_id": "t", "tool_input": tool_input})
+    out = io.StringIO()
+    code = hook.main(stdin=io.StringIO(raw), stdout=out)
+    o = json.loads(out.getvalue())["hookSpecificOutput"]
+    assert code == 0 and o["permissionDecision"] == "ask" and "how much" in o["permissionDecisionReason"]
+    got = plugin.on_pre_tool_call(tool_name="send_payment", args=tool_input, session_id="s", tool_call_id="c")
+    assert got["action"] == "approve" and "how much" in got["message"]

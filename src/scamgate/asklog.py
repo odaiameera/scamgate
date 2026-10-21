@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -35,10 +36,9 @@ def _pending_path(key: str) -> Path:
 
 
 def _append(path: Path, rec: dict) -> None:
-    ensure_state_dir()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    from .guard import append_private  # only you can read which sites were asked about
+
+    append_private(path, json.dumps(rec, ensure_ascii=False))
 
 
 def make_key(session: str, call_id: str) -> str:
@@ -64,8 +64,9 @@ def log_check(*, tool: str, decision: str, risk_score: int, rule_ids: list[str],
     })
     if decision in ("approve", "ask"):
         p = _pending_path(key)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("", encoding="utf-8")
+        ensure_state_dir()
+        p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.close(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
     return key
 
 

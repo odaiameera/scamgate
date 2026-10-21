@@ -11,8 +11,9 @@ import json
 import os
 from typing import Any
 
-from . import asklog, engine, hook
-from .models import PaymentCheck
+from pydantic import BaseModel, ValidationError
+
+from . import asklog, hook, tools
 
 _CTX: Any = None
 
@@ -43,13 +44,17 @@ def when_approvals_off() -> str:
 
 def on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "",
                      tool_call_id: str = "", task_id: str = "", **_: Any) -> dict | None:
-    decision = hook.handle({
-        "hook_event_name": "pre_tool_call",
-        "tool_name": tool_name,
-        "tool_input": args if isinstance(args, dict) else {},
-        "session_id": session_id or task_id or "",
-        "extra": {"tool_call_id": tool_call_id or "", "task_id": task_id or ""},
-    })
+    try:
+        decision = hook.handle({
+            "hook_event_name": "pre_tool_call",
+            "tool_name": tool_name,
+            "tool_input": args if isinstance(args, dict) else {},
+            "session_id": session_id or task_id or "",
+            "extra": {"tool_call_id": tool_call_id or "", "task_id": task_id or ""},
+        })
+    except Exception as exc:  # fail closed like the shell hook; don't rely on how Hermes treats a raising hook
+        return {"action": "block", "message": f"scamgate hook error, failing closed: {type(exc).__name__}: "
+                                              f"{str(exc)[:200]}"}
     if not decision:
         return None
     if decision.get("action") == "approve" and approvals_bypassed(session_id) and when_approvals_off() != "allow":
@@ -63,33 +68,35 @@ def on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = ""
 
 def on_post_tool_call(tool_name: str = "", session_id: str = "", tool_call_id: str = "",
                       task_id: str = "", status: str | None = None, **_: Any) -> None:
-    hook.handle({
-        "hook_event_name": "post_tool_call",
-        "tool_name": tool_name,
-        "tool_input": {},
-        "session_id": session_id or task_id or "",
-        "extra": {"tool_call_id": tool_call_id or "", "task_id": task_id or "", "status": status},
-    })
+    try:
+        hook.handle({
+            "hook_event_name": "post_tool_call",
+            "tool_name": tool_name,
+            "tool_input": {},
+            "session_id": session_id or task_id or "",
+            "extra": {"tool_call_id": tool_call_id or "", "task_id": task_id or "", "status": status},
+        })
+    except Exception:
+        pass  # a post event only records whether you approved; it must never break the tool call
     return None
 
 
+def _run_tool(fn: Any, model: type[BaseModel], args: Any) -> str:
+    """Same arguments and checks as the MCP tool. Bad arguments come back as an error, never a crash."""
+    try:
+        parsed = model.model_validate(args if isinstance(args, dict) else {})
+    except ValidationError as exc:
+        problems = "; ".join(f"{'.'.join(map(str, e['loc'])) or 'arguments'}: {e['msg']}" for e in exc.errors())
+        return json.dumps({"error": f"scamgate couldn't read these arguments ({problems})."})
+    return json.dumps(fn(parsed).model_dump(mode="json"))
+
+
 def check_url(args: dict, **_: Any) -> str:
-    url = str((args or {}).get("url") or "")
-    intent = (args or {}).get("intent")
-    return json.dumps(engine.check_url(url, intent).model_dump(mode="json"))
+    return _run_tool(tools.check_url, tools.UrlArgs, args)
 
 
 def check_payment(args: dict, **_: Any) -> str:
-    raw = args or {}
-    check = PaymentCheck(
-        payee_name=str(raw.get("payee_name") or ""),
-        payee_account=str(raw.get("payee_account") or ""),
-        amount=float(raw.get("amount") or 0),
-        currency=str(raw.get("currency") or "?"),
-        method=raw.get("method") or "other",
-        context_text=raw.get("context_text"),
-    )
-    return json.dumps(engine.check_payment(check).model_dump(mode="json"))
+    return _run_tool(tools.check_payment, tools.PaymentArgs, args)
 
 
 def slash(raw_args: str = "") -> str:
@@ -110,42 +117,37 @@ def slash(raw_args: str = "") -> str:
         rows = asklog.summarize(days=7)
         if not rows:
             return "scamgate: nothing in the ask log for the last 7 days."
-        lines = [f"{getattr(r, 'decision', '?')} {getattr(r, 'tool', '')} {getattr(r, 'summary', '')}".strip()
-                 for r in rows[:8]]
+        lines = []
+        for r in rows[:8]:
+            top = next(iter(r.rules), "")
+            lines.append(f"{r.host}: {r.asks} asked ({r.ran} approved, {r.not_run} refused, {r.pending} pending), "
+                         f"{r.blocks} blocked" + (f"; top rule {top}" if top else ""))
         return "scamgate, last 7 days:\n" + "\n".join(lines)
     if cmd == "update":
         return "scamgate: feed updates download data from the internet. Run `scamgate update-feeds` yourself."
     return "Usage: /scamgate status | review | update"
 
 
-_URL_SCHEMA = {
-    "name": "scamgate_check_url",
-    "description": "Check a link before opening it. If the decision is ask, stop and show the reasons. If deny, do not proceed.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "url": {"type": "string", "description": "The full URL about to be opened"},
-            "intent": {"type": "string", "description": "What this link is for"},
-        },
-        "required": ["url"],
-    },
-}
-_PAY_SCHEMA = {
-    "name": "scamgate_check_payment",
-    "description": "Check a payment before making it. If the decision is ask, stop and show the reasons. If deny, do not proceed.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "payee_name": {"type": "string"},
-            "payee_account": {"type": "string", "description": "IBAN, wallet address, or merchant id"},
-            "amount": {"type": "number"},
-            "currency": {"type": "string"},
-            "method": {"type": "string", "enum": ["card", "bank_transfer", "crypto", "gift_card", "other"]},
-            "context_text": {"type": "string"},
-        },
-        "required": ["payee_name", "payee_account", "amount", "currency", "method"],
-    },
-}
+def _parameters(model: type[BaseModel]) -> dict:
+    """The tool's JSON schema for Hermes, from the same model the MCP tool uses (minus titles and null branches)."""
+    schema = model.model_json_schema()
+    props = {}
+    for name, prop in schema["properties"].items():
+        prop = {k: v for k, v in prop.items() if k not in ("title", "default")}
+        if "anyOf" in prop:
+            branches = [b for b in prop.pop("anyOf") if b.get("type") != "null"]
+            if len(branches) == 1:
+                prop.update(branches[0])
+            else:
+                prop["anyOf"] = branches
+        props[name] = prop
+    return {"type": "object", "properties": props, "required": schema.get("required", [])}
+
+
+_URL_SCHEMA = {"name": "scamgate_check_url", "description": tools.URL_DESCRIPTION,
+               "parameters": _parameters(tools.UrlArgs)}
+_PAY_SCHEMA = {"name": "scamgate_check_payment", "description": tools.PAYMENT_DESCRIPTION,
+               "parameters": _parameters(tools.PaymentArgs)}
 
 
 def register(ctx) -> None:
