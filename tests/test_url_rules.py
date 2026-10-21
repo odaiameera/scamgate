@@ -229,3 +229,43 @@ def test_three_label_shared_suffix_gives_each_customer_their_own_site():
     assert parse("https://my-bucket.s3.amazonaws.com/x").registrable == "my-bucket.s3.amazonaws.com"
     assert parse("https://shop.example.co.uk/").registrable == "example.co.uk"
     assert parse("https://evil.github.io/").registrable == "evil.github.io"
+
+
+# --- The brand-padding search: same answers, linear time ---
+
+def _affix_reference(word, brand, affixes):
+    """Plain version of the question: is `word` some padding + brand + some padding?"""
+    from functools import lru_cache
+
+    @lru_cache(maxsize=None)
+    def pads(rest):
+        return not rest or any((rest[:k] in affixes or rest[:k].isdigit()) and pads(rest[k:])
+                               for k in range(1, min(14, len(rest)) + 1))
+    n = len(brand)
+    return any(word[i:i + n] == brand and pads(word[:i]) and pads(word[i + n:]) for i in range(len(word) - n + 1))
+
+
+def test_brand_padding_search_matches_the_plain_version():
+    import itertools
+
+    from scamgate.config import load_config, lst
+    from scamgate.rules.url import _brand_with_affixes
+
+    affixes = set(lst(load_config(), "brand_affixes"))
+    pieces = ["", "secure", "my", "login", "id", "123", "x", "bees", "pine", "verify2"]
+    for brand in ("paypal", "apple", "amazon", "revolut", "netflix"):
+        for a, b, c in itertools.product(pieces, repeat=3):
+            for word in (a + brand + b + c, a + b + brand + c, a + b + c):
+                assert _brand_with_affixes(word, brand, affixes) == _affix_reference(word, brand, affixes), word
+
+
+def test_brand_padding_search_is_linear():
+    import time
+
+    from scamgate.config import load_config, lst
+    from scamgate.rules.url import _brand_with_affixes
+
+    affixes = set(lst(load_config(), "brand_affixes"))
+    t0 = time.perf_counter()
+    _brand_with_affixes("paypal" * 2000, "paypal", affixes)
+    assert time.perf_counter() - t0 < 0.5

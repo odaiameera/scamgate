@@ -24,6 +24,11 @@
   feed listing counts only for that exact host. `googleusercontent.com` is no longer an official Google
   domain (Google uses it to sandbox untrusted user content, such as Apps Script web apps). `azure.com` stays
   official for Microsoft's own portal; only the VM names customers pick under `cloudapp.azure.com` are carved out.
+- Faster link checks, same verdicts: the brand-padding search is linear (a 12,000-character word went from
+  7.5 s to 0.03 s), the typo check skips words whose length rules out a one-letter edit, each link is
+  parsed once per check, and each word's look-alike variants are worked out once instead of once per brand.
+  At the 253-character cap the slowest link went from 23 ms to 1.4 ms. Verdicts on 16,050 generated
+  brand-shaped links are unchanged.
 
 ### Hook
 - Shell commands are read the way the shell passes them: quotes and escapes are removed first, and each

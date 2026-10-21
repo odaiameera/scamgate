@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Callable
 from urllib.parse import unquote, urlsplit
 
@@ -42,7 +43,7 @@ _UNICODE_SWAPS = {
 }
 
 
-@dataclass
+@dataclass(frozen=True)
 class ParsedUrl:
     host: str  # as given (lowercase, ascii / punycode form)
     unicode_host: str  # punycode decoded where possible
@@ -71,6 +72,7 @@ def _unreadable(why: str) -> ParsedUrl:
     return ParsedUrl("", "", "", "", "", unreadable=why)
 
 
+@lru_cache(maxsize=1024)  # every rule reads the same link; parse it once per check
 def parse(url: str) -> ParsedUrl:
     # Browsers drop tabs and newlines anywhere, and control characters or spaces at either end.
     raw = re.sub(r"[\t\n\r]", "", url or "").strip(_C0_OR_SPACE)
@@ -237,11 +239,16 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     reg_label = p.unicode_host.split(".")[-2] if p.unicode_host.count(".") >= 1 else p.unicode_host
     reg_tokens = set(re.split(r"[\-_]", reg_label))
     exact_w = int(ctx.rule_config.get("exact_token_weight", 45))
+    # Worked out once per link, not once per brand.
+    affixes = set(lst(ctx.config, "brand_affixes"))
+    typo_exempt = set(lst(ctx.config, "brand_typo_exempt"))
+    padded = tokens + ([joined] if len(tokens) > 1 else [])
+    variants_of = {t: normalize_variants(t) for t in set(padded)}
 
     for brand, official in brands.items():
         official_str = official[0] if official else brand
         for tok in tokens:
-            variants = normalize_variants(tok)
+            variants = variants_of[tok]
             if tok == brand:
                 return Hit(
                     f"'{p.host}' uses the name '{brand}' but is not an official {brand} domain "
@@ -256,16 +263,15 @@ def lookalike_brand(check: UrlCheck, ctx: RuleContext) -> Hit | None:
             # Edit distance only on the registrable label, and only for longer brand names,
             # to keep false positives like 'apply' ~ 'apple' down.
             if (len(brand) >= 6 and tok in reg_tokens and len(tok) >= 5
-                    and tok not in lst(ctx.config, "brand_typo_exempt")
-                    and any(levenshtein(v, brand) == 1 for v in variants)):
+                    and tok not in typo_exempt
+                    and any(abs(len(v) - len(brand)) <= 1 and levenshtein(v, brand) == 1 for v in variants)):
                 return Hit(
                     f"'{p.host}' is one character away from '{brand}' ('{tok}'), a common "
                     f"typosquat. The real site is {official_str}."
                 )
         if len(brand) >= 5 and brand not in tokens:
-            affixes = set(lst(ctx.config, "brand_affixes"))
-            for tok in tokens + ([joined] if len(tokens) > 1 else []):
-                if any(_brand_with_affixes(v, brand, affixes) for v in normalize_variants(tok)):
+            for tok in padded:
+                if any(_brand_with_affixes(v, brand, affixes) for v in variants_of[tok]):
                     return Hit(
                         f"'{p.host}' embeds the brand '{brand}' in an unofficial domain. "
                         f"The real site is {official_str}."
@@ -277,22 +283,27 @@ def _brand_with_affixes(word: str, brand: str, affixes: set[str]) -> bool:
     """True if `word` is the brand plus only scam-style padding ('appleid', 'securepaypal',
     'amazon-refund'), not an unrelated word that happens to contain it ('applebees', 'revolution',
     'pineapple')."""
+    if brand not in word:
+        return False
+    n = len(word)
+    # pre[i]: word[:i] is all padding. post[i]: word[i:] is all padding. One pass each, so the
+    # check stays linear however often the brand repeats ('paypalpaypal...').
+    pre = [True] + [False] * n
+    for i in range(1, n + 1):
+        pre[i] = any(pre[j] and _is_padding(word[j:i], affixes) for j in range(max(0, i - 14), i))
+    post = [False] * n + [True]
+    for i in range(n - 1, -1, -1):
+        post[i] = any(post[j] and _is_padding(word[i:j], affixes) for j in range(i + 1, min(n, i + 14) + 1))
     start = word.find(brand)
     while start != -1:
-        if _segments_into(word[:start], affixes) and _segments_into(word[start + len(brand):], affixes):
+        if pre[start] and post[start + len(brand)]:
             return True
         start = word.find(brand, start + 1)
     return False
 
 
-def _segments_into(rest: str, affixes: set[str]) -> bool:
-    ok = [True] + [False] * len(rest)
-    for i in range(1, len(rest) + 1):
-        for j in range(max(0, i - 14), i):
-            if ok[j] and (rest[j:i] in affixes or rest[j:i].isdigit()):
-                ok[i] = True
-                break
-    return ok[len(rest)]
+def _is_padding(piece: str, affixes: set[str]) -> bool:
+    return piece in affixes or piece.isdigit()
 
 
 @register("url.ip_host", kind="url")
