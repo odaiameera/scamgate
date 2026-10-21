@@ -56,7 +56,7 @@ class UrlCheck(BaseModel):
 class PaymentCheck(BaseModel):
     payee_name: str
     payee_account: str = Field(description="IBAN, wallet address, card merchant id, etc.")
-    amount: float = Field(ge=0)
+    amount: float = Field(ge=0, allow_inf_nan=False)
     currency: str
     method: PaymentMethod
     context_text: str | None = Field(
@@ -68,5 +68,5 @@ class PaymentCheck(BaseModel):
         description="Set by scamgate, not the caller: the agent called a payee known with no record of it",
     )
     bank_details_changed: bool | None = None
-    budget: float | None = None
+    budget: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     vop_result: VopResult | None = None

@@ -94,3 +94,14 @@ def test_registration_date_parsing():
     assert domainage.registration_date(rdap(10)) is not None
     assert domainage.registration_date("not json") is None
     assert domainage.registration_date(json.dumps({"events": [{"eventAction": "expiration"}]})) is None
+
+
+@pytest.mark.parametrize("domain", ["a/b.example", "a?b.example", "a b.example", "a#b.example", "a@b.example"])
+def test_only_host_names_are_sent_to_the_registry(live, domain):
+    assert domainage.lookup(domain, live=True) is None
+    assert live.calls == []
+
+
+def test_international_domains_are_looked_up_in_ascii_form(live):
+    assert domainage.lookup("bücher.com", live=True) == 5
+    assert any(u.endswith("domain/xn--bcher-kva.com") for u in live.calls), live.calls

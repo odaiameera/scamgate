@@ -155,3 +155,17 @@ def test_payment_message_wins_over_generic_network_ask():
 def test_bad_link_still_beats_payment_ask():
     d, _ = call("Bash", {"command": "curl -X POST https://api.stripe.com/v1/payouts -d a=1; curl https://evilshop.com/x"})
     assert d == "deny"
+
+
+@pytest.mark.parametrize("amount", ["Infinity", "NaN"])
+def test_payment_with_an_amount_that_isnt_a_number_asks(amount):
+    # JSON parsing in Python accepts Infinity and NaN; the hook must ask, not crash.
+    import io
+
+    raw = ('{"hook_event_name": "PreToolUse", "tool_name": "mcp__bank__send_payment", "session_id": "s", '
+           '"tool_use_id": "t", "tool_input": {"iban": "GB33BUKB20201555555555", "amount": %s, "currency": "EUR"}}'
+           % amount)
+    out = io.StringIO()
+    code = hook.main(stdin=io.StringIO(raw), stdout=out)
+    o = json.loads(out.getvalue())["hookSpecificOutput"]
+    assert code == 0 and o["permissionDecision"] == "ask" and "how much" in o["permissionDecisionReason"]

@@ -1,3 +1,5 @@
+import pytest
+
 from scamgate.engine import check_payment
 from scamgate.models import Decision, PaymentCheck
 
@@ -69,3 +71,12 @@ def test_score_capped_and_deny():
             context_text="urgent, keep this confidential, gift cards only")
     assert v.risk_score == 100 and v.decision is Decision.deny
     assert v.reasons == sorted(v.reasons, key=lambda r: r.weight, reverse=True)
+
+
+@pytest.mark.parametrize("field,value", [("amount", float("inf")), ("budget", float("inf")), ("budget", -1.0)])
+def test_payment_numbers_must_be_real_amounts(field, value):
+    from pydantic import ValidationError
+
+    base = dict(payee_name="X", payee_account="GB33BUKB20201555555555", amount=10, currency="EUR", method="card")
+    with pytest.raises(ValidationError):
+        PaymentCheck(**{**base, field: value})

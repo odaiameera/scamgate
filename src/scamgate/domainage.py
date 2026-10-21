@@ -17,11 +17,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
 ENV_RDAP = "SCAMGATE_RDAP"
+_HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")
 BOOTSTRAP_URL = "https://data.iana.org/rdap/dns.json"
 TIMEOUT_S = 3
 BOOTSTRAP_TTL = timedelta(days=30)
@@ -113,8 +115,12 @@ def registration_date(rdap_json: str) -> datetime | None:
 def lookup(domain: str, *, live: bool | None = None, fetch: Callable[[str], str] | None = None) -> int | None:
     """Age of `domain` in days, or None if unknown. `live` overrides SCAMGATE_RDAP."""
     domain = (domain or "").strip().lower().rstrip(".")
-    if "." not in domain or not all(domain.split(".")):
+    try:
+        domain = domain.encode("idna").decode("ascii")  # registries take the xn-- form
+    except UnicodeError:
         return None
+    if not _HOSTNAME.match(domain):
+        return None  # only a plain host name goes into the registry URL
     m = mode()
     allow_net = m == "live" if live is None else live
     if m == "off" and live is None:

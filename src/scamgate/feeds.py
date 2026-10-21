@@ -166,12 +166,18 @@ class FeedResult:
     message: str = ""
 
 
+MAX_FEED_BYTES = 256 * 1024 * 1024  # GitHub serves files up to 100 MB; far bigger isn't a feed
+
+
 def _download(url: str, timeout: int = 120) -> str:
     import urllib.request  # lazy: the hook never downloads, so it skips this import
 
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
-        return resp.read().decode("utf-8", "replace")
+        data = resp.read(MAX_FEED_BYTES + 1)
+    if len(data) > MAX_FEED_BYTES:
+        raise ValueError(f"feed is larger than {MAX_FEED_BYTES // (1024 * 1024)} MB; kept the old cache")
+    return data.decode("utf-8", "replace")
 
 
 def _meta_path(d: Path) -> Path:

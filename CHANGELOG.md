@@ -54,6 +54,14 @@
 - If override rules can't be verified (the signing key is missing or was changed, or a line was edited),
   checks now warn instead of dropping your deny rules silently.
 
+### Input checks
+- Payment `amount` and `budget` must be real numbers: `inf`, `nan` and a negative budget are rejected.
+- In the hook, a payment tool call whose amount is JSON `Infinity` or `NaN` asks ("can't read how much")
+  instead of failing with an internal error.
+- Domain-age lookups (`SCAMGATE_RDAP=live`) send only a plain host name to the registry, and look up
+  international names in their `xn--` form (they used to fail).
+- `update-feeds` refuses a feed download over 256 MB and keeps the old cache.
+
 ## [0.3.0] - 2026-10-16
 
 Hermes plugin, and the holes found while making it.
