@@ -44,7 +44,8 @@ _SAFETY_ASK = re.compile(
 """
 )
 _SECRET = re.compile(r"(?i)state\.key|payees\.salt|\.local[/\\]+state[/\\]+scamgate\b")
-_OWN_CHECK = re.compile(r"(?i)scamgate(?:__|_)check_(?:url|payment)\b")
+# Exactly scamgate's own tools: Claude Code MCP, Hermes MCP, Hermes plugin. Not any name containing them.
+_OWN_CHECK = re.compile(r"(?i)^(?:mcp__scamgate__|mcp_scamgate_|scamgate_)check_(?:url|payment)$")
 _SCRIPT_EXT = re.compile(r"(?i)\.(?:sh|bash|py|js|mjs|cjs|ps1|bat|cmd)$")
 _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _RUNNABLE = re.compile(
@@ -61,7 +62,7 @@ _PWSH = {"pwsh", "powershell", "pwsh.exe", "powershell.exe"}
 
 def own_check(tool: str) -> bool:
     """scamgate's own check tools. Asking 'is this link bad?' must not be blocked for naming it."""
-    return bool(_OWN_CHECK.search(tool or ""))
+    return bool(_OWN_CHECK.match((tool or "").strip()))
 
 
 def gate_extra(tool: str, tool_input: dict):

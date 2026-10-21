@@ -61,6 +61,7 @@ _NON_WEB = re.compile(r"(?i)^(javascript|vbscript|data|file|blob|filesystem):")
 # Characters a browser refuses in a host name (WHATWG forbidden domain code points).
 _FORBIDDEN_HOST = re.compile(r"[\x00-\x20#%/:<>?@\[\\\]^|\x7f]")
 _C0_OR_SPACE = "".join(map(chr, range(0x21)))
+_WEB_SCHEME = re.compile(r"(?i)^(?:https?|wss?|ftp):")
 
 
 def repair_schemes(text: str) -> str:
@@ -320,8 +321,9 @@ def ip_host(check: UrlCheck, ctx: RuleContext) -> Hit | None:
 def userinfo(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     """Link has a username part before '@', which browsers ignore and scammers use to fake the address."""
     p = parse(check.url)
-    # Only real links with an explicit scheme; 'mailto:a@b.com' or a bare email isn't a disguised URL.
-    if not p.username or "://" not in check.url.strip():
+    # Only real links with an explicit web scheme, however it's spelled ('https:/', 'https:\\');
+    # 'mailto:a@b.com' or a bare email isn't a disguised URL.
+    if not p.username or not _WEB_SCHEME.match(check.url.strip(_C0_OR_SPACE)):
         return None
     brands: dict[str, list[str]] = lst(ctx.config, "brands") or {}
     # Name what the link pretends to be only when it's a domain-shaped token; never echo free text,

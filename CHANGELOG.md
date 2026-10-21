@@ -29,6 +29,8 @@
   parsed once per check, and each word's look-alike variants are worked out once instead of once per brand.
   At the 253-character cap the slowest link went from 23 ms to 1.4 ms. Verdicts on 16,050 generated
   brand-shaped links are unchanged.
+- The fake-address check (`paypal.com@evil.example`) now fires however the scheme is written:
+  `https:/…` and `https:\\…` reach the same host as `https://…`, so they're judged the same.
 
 ### Hook
 - Shell commands are read the way the shell passes them: quotes and escapes are removed first, and each
@@ -38,6 +40,10 @@
   built at run time). Variables and `$(…)` still ask.
 - A network command the shell can't split (an unbalanced quote) asks.
 - Bash `/dev/tcp/HOST/PORT` and `/dev/udp/HOST/PORT` are checked like any other destination.
+- Only scamgate's own check tools skip the gate (`mcp__scamgate__check_url`, `mcp_scamgate_check_url`,
+  `scamgate_check_url` and the `check_payment` forms). A tool whose name merely contains them, like
+  `mcp__notscamgate__check_url`, used to skip every check, tamper checks included. If you registered the
+  MCP server under another name, asking it about a bad link may now ask you first.
 
 ## [0.3.0] - 2026-10-16
 

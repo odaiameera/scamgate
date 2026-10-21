@@ -269,3 +269,10 @@ def test_brand_padding_search_is_linear():
     t0 = time.perf_counter()
     _brand_with_affixes("paypal" * 2000, "paypal", affixes)
     assert time.perf_counter() - t0 < 0.5
+
+
+@pytest.mark.parametrize("url", ["https:/paypal.com@evil.example/login", "HTTPS://paypal.com@evil.example/login",
+                                 "https:\\\\paypal.com@evil.example/login"])
+def test_userinfo_disguise_is_caught_however_the_scheme_is_written(url):
+    v = check_url(url)
+    assert "url.userinfo" in ids(v) and v.decision is Decision.deny, url
