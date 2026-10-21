@@ -1,5 +1,7 @@
 # scamgate
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/odaiameera/scamgate)](https://m8ven.ai/mcp/odaiameera/scamgate?s=readme)
+
 A self-hosted scam check for AI agents: verify links and payments before the agent acts.
 
 **Website and docs:** https://odaiameera.github.io/scamgate/
@@ -427,3 +429,5 @@ offline and deterministic. See [`AGENTS.md`](AGENTS.md) for repo conventions.
 ## License
 
 [MIT](LICENSE). Feed data is not included and stays under each provider's own terms.
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/odaiameera-scamgate-1aer5u?v=14922257c317d320ce1f7cf19ade881e)](https://m8ven.ai/mcp/odaiameera-scamgate-1aer5u?s=readme)
