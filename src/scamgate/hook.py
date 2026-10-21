@@ -67,7 +67,7 @@ CODE_KEYS = ("command", "code", "script", "expression", "cmd", "input", "cmdline
 PATH_KEYS = ("path", "file_path", "filepath", "notebook_path", "target_file")
 REASON_KEYS = ("description", "prompt", "intent", "reason", "task", "goal")
 
-_URL_RE = re.compile(r"""(?i)\b(?:https?|wss?|ftp)://[^\s'"<>`)\]}\\]+""")
+_URL_RE = re.compile(r"""(?i)\b(?:https?|wss?|ftp)://(?:\[[0-9a-f:.]+\]|[^\s'"<>`)\]}\\])+""")  # [::1] stays whole
 # A URL whose host is built at run time: variables, templates, string concatenation.
 _DYNAMIC_URL_RE = re.compile(
     r"""(?ix)\b(?:https?|wss?|ftp)://
@@ -657,7 +657,7 @@ def _evaluate(g: Gate) -> Result:
                                  "list, but that's too many to review one by one. Approve once, only if you expect this.",
                       f"scamgate:bulk:{_key(*sorted(g.urls))}", ["hook.bulk"], 0, hosts)
     if worst is Decision.ask:
-        h = parse(worst_url).host
+        h = parse(worst_url).host or f"unreadable-{_key(worst_url)}"  # one "always" never covers other links
         fired = sorted({r.rule_id for r in worst_v.reasons})
         return Result("approve", f"scamgate: {worst_v.summary} (score {worst_v.risk_score}/100). "
                                  "Approve only if you trust where this link goes.",

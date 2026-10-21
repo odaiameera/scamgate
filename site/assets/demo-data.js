@@ -313,6 +313,15 @@ window.SCAMGATE_DEMO = {
  ],
  "rules": [
   {
+   "id": "url.unreadable",
+   "kind": "url",
+   "enabled": true,
+   "doc": "scamgate can't tell where the link goes, so none of its other link checks can run.",
+   "config": {
+    "weight": 40
+   }
+  },
+  {
    "id": "url.blocklist",
    "kind": "url",
    "enabled": true,

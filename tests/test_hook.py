@@ -52,6 +52,14 @@ def test_hermes_ask_escalates_to_human_approval_with_narrow_rule_key():
     assert o["rule_key"].startswith("scamgate:shop.example:")
 
 
+def test_unreadable_links_ask_with_a_key_per_link():
+    # One "always" for an unreadable link must not pre-approve every other unreadable link.
+    a, _ = out(hermes("browser_navigate", {"url": "https://shop[1-2].example/"}))
+    b, _ = out(hermes("browser_navigate", {"url": "https://a.example%20b.example/"}))
+    assert a["action"] == b["action"] == "approve"
+    assert a["rule_key"] != b["rule_key"]
+
+
 def test_claude_deny_and_ask_use_permission_decision():
     o, _ = out(claude("WebFetch", {"url": "https://paypal.com@evil.example/", "prompt": "get price"}))
     hso = o["hookSpecificOutput"]

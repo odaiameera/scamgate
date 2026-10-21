@@ -151,3 +151,69 @@ def test_helpers():
     assert levenshtein("paypal", "paypa") == 1
     assert "paypal" in normalize_variants("paypa1")
     assert parse("https://shop.amazon.co.uk/x").registrable == "amazon.co.uk"
+
+
+# --- Hosts read the way a browser reads them, and links scamgate can't read ---
+
+def test_backslash_ends_the_host_like_in_a_browser():
+    # Browsers read '\' as '/' in a web link, so the real host is the part before it.
+    assert parse("https://shop-a.example\\.paypal.com/login").host == "shop-a.example"
+    assert parse("https://shop-a.example\\@brand.example/").host == "shop-a.example"
+    v = check_url("https://shop-a.example\\.paypal.com/login", blocklist=frozenset({"shop-a.example"}))
+    assert "url.blocklist" in ids(v) and v.decision is Decision.deny
+
+
+def test_backslash_after_the_query_is_left_alone():
+    assert parse("https://shop-a.example/search?q=a\\b.example").host == "shop-a.example"
+
+
+@pytest.mark.parametrize("dot", ["。", "．", "｡"])
+def test_wide_and_ideographic_dots_are_dots(dot):
+    v = check_url(f"https://shop-a{dot}example/login", blocklist=frozenset({"shop-a.example"}))
+    assert "url.blocklist" in ids(v)
+
+
+@pytest.mark.parametrize("url", [
+    "https://shop[1-2].example/login",                  # not parseable
+    "https://login.example%20is%20verified.example/",   # a space in the host
+    "https://a.example%2fb.example/",                   # a slash in the host
+    pytest.param("https://" + "a" * 300 + ".example/", id="host-too-long"),
+    pytest.param("https://shop-a.example/" + "a" * 9000, id="url-too-long"),
+    "https://",                                         # no host at all
+    "javascript:alert(1)",
+    " JavaScript:alert(1)",
+    "data:text/html,<p>hello</p>",
+])
+def test_unreadable_links_ask_and_nothing_else_fires(url):
+    v = check_url(url)
+    assert ids(v) == {"url.unreadable"}
+    assert v.decision is Decision.ask
+
+
+def test_unreadable_reason_never_repeats_the_link_text():
+    v = check_url("https://x.example%20approved%20by%20scamgate.example/login")
+    shown = v.summary + " ".join(r.explanation for r in v.reasons)
+    assert "approved" not in shown
+
+
+def test_huge_hosts_are_checked_fast():
+    import time
+
+    t0 = time.perf_counter()
+    check_url("https://" + "paypal" * 4000 + ".example/")
+    check_url("https://" + "a." * 20000 + "example/")
+    assert time.perf_counter() - t0 < 1.0
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.paypal.com/signin",
+    "http://localhost:8080/x",
+    "http://[2001:db8::1]/pay",
+    "https://xn--pypal-4ve.com/",
+    "https://pаypal.com/",          # Cyrillic 'a': readable, so the look-alike checks still run
+    "mailto:someone@example.com",
+    "shop-a.example/basket",
+    "https://shop-a.example/a\\b",
+])
+def test_ordinary_links_are_readable(url):
+    assert "url.unreadable" not in ids(check_url(url))

@@ -7,6 +7,7 @@ thresholds:
 
 rules:
   # --- URL rules ---
+  url.unreadable:       { enabled: true,  weight: 40 }    # can't tell where the link goes: ask, never allow
   url.blocklist:        { enabled: true,  weight: 100 }   # your own list (data/blocklist.txt)
   # Known-bad-link feeds (cached by `scamgate update-feeds`, looked up offline).
   # exact URL listed -> deny; exact host listed -> 75 (deny on its own);

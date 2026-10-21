@@ -1,0 +1,8 @@
+# EXAMPLE scenario (made up for testing)
+# Browsers read '\' as '/', so this opens shop-deals.xyz, not paypal.com.
+name: Backslash makes a sign-in page look like it's on paypal.com
+kind: url
+label: scam
+expected: ask
+input:
+  url: 'https://shop-deals.xyz\.paypal.com/signin'

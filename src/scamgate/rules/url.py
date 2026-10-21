@@ -50,6 +50,16 @@ class ParsedUrl:
     tld: str
     path_query: str
     username: str = ""  # userinfo before '@' (password part dropped, never echoed)
+    unreadable: str = ""  # why scamgate can't tell where the link goes; a fixed phrase, never link text
+
+
+MAX_URL_CHARS = 8192
+MAX_HOST_CHARS = 253  # the most DNS allows
+# Links that run code or carry a whole page instead of naming a site.
+_NON_WEB = re.compile(r"(?i)^(javascript|vbscript|data|file|blob|filesystem):")
+# Characters a browser refuses in a host name (WHATWG forbidden domain code points).
+_FORBIDDEN_HOST = re.compile(r"[\x00-\x20#%/:<>?@\[\\\]^|\x7f]")
+_C0_OR_SPACE = "".join(map(chr, range(0x21)))
 
 
 def repair_schemes(text: str) -> str:
@@ -57,16 +67,34 @@ def repair_schemes(text: str) -> str:
     return re.sub(r"(?i)\b((?:https?|wss?|ftp)):/+", r"\1://", text or "")
 
 
+def _unreadable(why: str) -> ParsedUrl:
+    return ParsedUrl("", "", "", "", "", unreadable=why)
+
+
 def parse(url: str) -> ParsedUrl:
-    raw = repair_schemes(url.strip())
+    # Browsers drop tabs and newlines anywhere, and control characters or spaces at either end.
+    raw = re.sub(r"[\t\n\r]", "", url or "").strip(_C0_OR_SPACE)
+    if len(raw) > MAX_URL_CHARS:
+        return _unreadable("is too long to check")
+    if m := _NON_WEB.match(raw):
+        return _unreadable(f"is a {m.group(1).lower()}: link, not a web address")
+    # Before the query, browsers read '\' as '/': 'https://a.example\.b.com' goes to a.example.
+    end = min((i for i in (raw.find("?"), raw.find("#")) if i >= 0), default=len(raw))
+    raw = repair_schemes(raw[:end].replace("\\", "/") + raw[end:])
     if "://" not in raw:
         raw = "http://" + raw
     try:
         parts = urlsplit(raw)
         hostname = parts.hostname or ""
     except ValueError:
-        parts, hostname = urlsplit("http://invalid.invalid/"), ""
+        return _unreadable("can't be parsed")
     host = canon_host(hostname)
+    if not host:
+        return _unreadable("has no site name")
+    if not _is_ip(host) and _FORBIDDEN_HOST.search(host):
+        return _unreadable("has characters a real site name can't have")
+    if len(host) > MAX_HOST_CHARS:
+        return _unreadable("has a site name longer than a real one can be")
     try:
         unicode_host = host.encode("ascii").decode("idna") if "xn--" in host else host
     except UnicodeError:
@@ -111,6 +139,16 @@ def normalize_variants(token: str) -> set[str]:
 
 def _on_domain(host: str, domain: str) -> bool:
     return host == domain or host.endswith("." + domain)
+
+
+@register("url.unreadable", kind="url")
+def unreadable(check: UrlCheck, ctx: RuleContext) -> Hit | None:
+    """scamgate can't tell where the link goes, so none of its other link checks can run."""
+    p = parse(check.url)
+    if p.unreadable:
+        return Hit(f"scamgate can't tell where this link goes (the address {p.unreadable}), so it can't "
+                   "check it. Only open it if you know exactly where it leads.")
+    return None
 
 
 @register("url.blocklist", kind="url")

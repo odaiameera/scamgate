@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Link checks
+- New rule `url.unreadable` (40, asks): a link scamgate can't read never gets `allow`. That covers links
+  that don't parse, site names with characters a browser refuses (spaces, slashes), site names longer than
+  DNS allows, addresses over 8 KiB, and `javascript:`, `data:`, `vbscript:`, `file:` and `blob:` links.
+  No other rule runs on such a link, so its text never appears in a reason.
+- `\` before the query is read as `/`, as browsers do: `https://a.example\.paypal.com/` is checked as
+  `a.example`, not as a PayPal address.
+- Ideographic and halfwidth full stops (`。`, `｡`) in a site name count as dots.
+- Site names over 253 characters are rejected before the brand checks run (a 24 KB one took 37 s).
+- Hook: `http://[::1]:3000/` is read as one link (the address used to be cut at `]`).
+
 ## [0.3.0] - 2026-10-16
 
 Hermes plugin, and the holes found while making it.
