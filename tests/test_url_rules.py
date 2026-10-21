@@ -217,3 +217,15 @@ def test_huge_hosts_are_checked_fast():
 ])
 def test_ordinary_links_are_readable(url):
     assert "url.unreadable" not in ids(check_url(url))
+
+
+def test_customer_hosting_on_amazonaws_is_not_an_official_amazon_site():
+    # amazonaws.com hosts customers' buckets and servers (583 Public Suffix List entries), not Amazon's sign-in.
+    v = check_url("https://paypal-secure-login.s3.amazonaws.com/signin.html")
+    assert "url.lookalike_brand" in ids(v) and v.decision is Decision.deny
+
+
+def test_three_label_shared_suffix_gives_each_customer_their_own_site():
+    assert parse("https://my-bucket.s3.amazonaws.com/x").registrable == "my-bucket.s3.amazonaws.com"
+    assert parse("https://shop.example.co.uk/").registrable == "example.co.uk"
+    assert parse("https://evil.github.io/").registrable == "evil.github.io"

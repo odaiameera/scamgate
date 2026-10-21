@@ -41,7 +41,8 @@ lists:
     aib:     [aib.ie]
     boi:     [bankofireland.com, boi.com]
     stripe:  [stripe.com, stripe.network]
-    amazon:  [amazon.com, amazon.co.uk, amazon.ie, amazon.de, amazon.fr, amazon.es, amazon.it, amazon.nl, amazonaws.com]
+    # Not amazonaws.com: its subdomains are customers' buckets and servers (S3, EC2, API Gateway).
+    amazon:  [amazon.com, amazon.co.uk, amazon.ie, amazon.de, amazon.fr, amazon.es, amazon.it, amazon.nl]
     apple:   [apple.com, icloud.com]
     # Brand pack: the names most used in phishing (APWG / vendor reports), plus Irish and UK banks,
     # couriers and services. Exact-name and typo checks only; keep names that are also everyday

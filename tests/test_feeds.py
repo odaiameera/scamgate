@@ -134,3 +134,26 @@ def test_hook_uses_lazy_lookup_not_full_index(cache, monkeypatch):
 
 def test_lazy_index_empty_cache_is_falsy(tmp_path):
     assert not feeds.LazyFeedIndex(tmp_path)
+
+
+def _domain_feed(*domains):
+    """A domain feed index listing these domains (as Phishing.Database does)."""
+    hosts = {d: ["phishing_database_domains"] for d in domains}
+    return feeds.FeedIndex(hosts=dict(hosts), listed_domains=dict(hosts),
+                           fetched_at={"phishing_database_domains": datetime.now(timezone.utc).isoformat()})
+
+
+def test_listing_a_shared_hosting_suffix_does_not_condemn_every_site_on_it():
+    # Anyone can create a bucket under s3.amazonaws.com; a feed entry for the suffix isn't about this bucket.
+    v = check_url("https://my-bucket.s3.amazonaws.com/report.pdf", feeds=_domain_feed("s3.amazonaws.com"))
+    assert "url.known_bad_feed" not in {r.rule_id for r in v.reasons}
+
+
+def test_a_listed_bucket_on_shared_hosting_is_caught():
+    v = check_url("https://bad-bucket.s3.amazonaws.com/index.html", feeds=_domain_feed("bad-bucket.s3.amazonaws.com"))
+    assert "url.known_bad_feed" in {r.rule_id for r in v.reasons} and v.decision is Decision.deny
+
+
+def test_parent_listing_still_covers_subdomains_of_an_ordinary_domain():
+    v = check_url("https://login.bad-shop.example/", feeds=_domain_feed("bad-shop.example"))
+    assert "url.known_bad_feed" in {r.rule_id for r in v.reasons}

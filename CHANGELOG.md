@@ -12,6 +12,13 @@
 - Ideographic and halfwidth full stops (`。`, `｡`) in a site name count as dots.
 - Site names over 253 characters are rejected before the brand checks run (a 24 KB one took 37 s).
 - Hook: `http://[::1]:3000/` is read as one link (the address used to be cut at `]`).
+- `amazonaws.com` is no longer an official Amazon domain. Its subdomains are customers' buckets and
+  servers (583 Public Suffix List entries), so a sign-in page there is judged like any other site, and a
+  feed listing of one bucket's host counts.
+- A feed listing of a shared suffix such as `s3.amazonaws.com` no longer condemns every site under it:
+  a parent-domain listing counts only at or below the site's own registrable domain.
+- Three-label shared suffixes in the curated list (`s3.amazonaws.com`) now take effect. Only the last two
+  labels used to be compared, so each bucket was treated as part of `amazonaws.com`.
 
 ### Hook
 - Shell commands are read the way the shell passes them: quotes and escapes are removed first, and each

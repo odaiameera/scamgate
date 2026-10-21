@@ -100,10 +100,9 @@ def parse(url: str) -> ParsedUrl:
     except UnicodeError:
         unicode_host = host
     labels = host.split(".")
-    if len(labels) >= 3 and ".".join(labels[-2:]) in _MULTI_SUFFIXES:
-        registrable = ".".join(labels[-3:])
-    else:
-        registrable = ".".join(labels[-2:])
+    # Longest listed suffix first, so 's3.amazonaws.com' wins over a two-label match.
+    n = next((k for k in (3, 2) if len(labels) > k and ".".join(labels[-k:]) in _MULTI_SUFFIXES), 1)
+    registrable = ".".join(labels[-(n + 1):])
     path_query = unquote(parts.path + ("?" + parts.query if parts.query else "")).lower()
     username = unquote(parts.username or "").lower()
     return ParsedUrl(host, unicode_host, registrable, labels[-1] if labels else "", path_query, username)
@@ -188,6 +187,8 @@ def known_bad_feed(check: UrlCheck, ctx: RuleContext) -> Hit | None:
     if hit.kind == "host":
         return Hit(f"The host {hit.matched} is listed as phishing/malware by {srcs}.",
                    weight=int(ctx.rule_config.get("host_weight", 75)))
+    if not _on_domain(hit.matched, parse(check.url).registrable):
+        return None  # a listed shared suffix (s3.amazonaws.com) says nothing about this one customer's site
     return Hit(f"{host} sits under {hit.matched}, which is listed as phishing by {srcs}.",
                weight=int(ctx.rule_config.get("parent_weight", 50)))
 
