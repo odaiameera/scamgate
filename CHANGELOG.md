@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.1] - 2026-10-22
+
+Security fixes from two review rounds (PRs #17 and #18). Install commands are pinned to `v0.3.1`.
 
 ### Link checks
 - New rule `url.unreadable` (40, asks): a link scamgate can't read never gets `allow`. That covers links

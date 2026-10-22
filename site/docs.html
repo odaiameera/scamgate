@@ -64,10 +64,10 @@
       <h2><span class="num">01</span>Quickstart</h2>
       <p>Requires Python 3.11+. Installing with <code>uv tool</code> gives you two commands:
         <code>scamgate</code> and <code>scamgate-hook</code>.</p>
-<pre class="code" data-lang="shell"><code>uv tool install git+https://github.com/odaiameera/scamgate@v0.3.0
+<pre class="code" data-lang="shell"><code>uv tool install git+https://github.com/odaiameera/scamgate@v0.3.1
 scamgate update-feeds        <span class="c"># download known-bad-link feeds (the only command that goes online)</span>
 scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pre>
-      <p>Or with pip: <code>pip install "git+https://github.com/odaiameera/scamgate.git@v0.3.0"</code>. To hack on it,
+      <p>Or with pip: <code>pip install "git+https://github.com/odaiameera/scamgate.git@v0.3.1"</code>. To hack on it,
         clone the repo and run <code>uv sync</code>, then prefix commands with <code>uv run</code>.</p>
       <p>The verdict is JSON: a <code>decision</code>, a <code>risk_score</code>, every <code>reason</code> with its
         points, a one-line <code>summary</code>, any <code>warnings</code> (for example, no feeds cached yet) and an
@@ -233,7 +233,7 @@ hermes plugins enable scamgate</code></pre>
                    <span class="k">"hooks"</span>: [{<span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"/absolute/path/to/scamgate-hook"</span>}]}]
 }}</code></pre>
       <p>Use the absolute path (<code>uv tool dir --bin</code> shows it) so nothing earlier on <code>PATH</code> can stand in for the hook.</p>
-      <div class="note"><b>Install a pinned copy</b>Run the hook from <code>uv tool install git+https://github.com/odaiameera/scamgate@v0.3.0</code>,
+      <div class="note"><b>Install a pinned copy</b>Run the hook from <code>uv tool install git+https://github.com/odaiameera/scamgate@v0.3.1</code>,
         not a source checkout. An installed copy checks its own files against the hashes recorded at install time on
         every call, and blocks everything if they changed. A source checkout has nothing to check against.</div>
       <p>Each gated call costs one process start, about 0.7 s on Windows. Calls that don't touch the network or
