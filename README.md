@@ -44,7 +44,7 @@ uv sync
 uv run scamgate update-feeds      # download the known-bad-link feeds into ~/.cache/scamgate
 
 # or with pip, pinned to a release
-pip install "git+https://github.com/odaiameera/scamgate.git@v0.3.0"
+pip install "git+https://github.com/odaiameera/scamgate.git@v0.3.1"
 scamgate update-feeds
 ```
 
@@ -245,7 +245,7 @@ Without it, a hook that crashes, times out or can't start lets the tool call thr
 Use the absolute path (`uv tool dir --bin` shows it) so nothing earlier on `PATH` can stand in for
 the hook.
 
-Install a pinned copy for the hook (`uv tool install git+https://github.com/odaiameera/scamgate@v0.3.0`, or a commit hash)
+Install a pinned copy for the hook (`uv tool install git+https://github.com/odaiameera/scamgate@v0.3.1`, or a commit hash)
 rather than running from a source checkout: an installed copy checks its own files against the
 hashes recorded at install time on every call, and blocks everything if they changed. A source
 checkout has nothing to check against.

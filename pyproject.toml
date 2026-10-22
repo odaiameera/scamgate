@@ -1,6 +1,6 @@
 [project]
 name = "scamgate"
-version = "0.3.0"
+version = "0.3.1"
 description = "Self-hosted scam check for AI agents: verify links and payments before they act"
 license = "MIT"
 readme = "README.md"
