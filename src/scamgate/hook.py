@@ -366,7 +366,25 @@ def _bare_hosts(segment: str) -> list[str]:
     return out
 
 
-_CODE_LIKE = re.compile(r"[A-Za-z_][\w.]*\(")
+_WORD_RUN = re.compile(r"[\w.]+")
+_NAME_START = re.compile(r"[A-Za-z_]")
+
+
+def _code_like(s: str) -> bool:
+    r"""Same answer as `re.compile(r"[A-Za-z_][\w.]*\(").search(s)`, without the quadratic scan.
+
+    That pattern backtracks from every start position to the end of the string, so one long
+    identifier with no parenthesis in it costs O(n^2): a 100k-character command takes about 40 s
+    inside the hook, and the hook input cap is 2 MiB. Scanning whole word/dot runs once gives the
+    identical answer in O(n).
+    """
+    for m in _WORD_RUN.finditer(s):
+        end = m.end()
+        if end < len(s) and s[end] == "(" and _NAME_START.search(s, m.start(), end):
+            return True
+    return False
+
+
 _PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editable", "-i", "--index-url",
                     "--extra-index-url", "-f", "--find-links", "-t", "--target", "--prefix", "--python", "-p",
                     "--root", "--platform", "--python-version", "--implementation", "--abi", "--only-binary",
@@ -384,19 +402,36 @@ _TEXT_ONLY = re.compile(r"(?i)^(?:grep|egrep|fgrep|rg|ag|ack|cat|bat|head|tail|l
                         r"echo|printf|type|file|stat|sed\s+-n|awk\s+'[^']*'\s+[\w./-]+$|"
                         r"git\s+(?:log|grep|diff|show|status|blame))\b")
 _SUBST = re.compile(r"\$\(|`|<\(|>\(")
+# Anything a shell could rewrite: quotes, backslash escapes. Without them, word splitting is whitespace.
+_NEEDS_SHELL = re.compile(r"""['"\\]""")
+_WHITESPACE_SPLIT = re.compile(r"[ \t\r\n]+")
 
 
-def _local_install(seg: str) -> bool:
-    """Installs from a lockfile, manifest or local path: the destination is the configured registry and
-    the packages are already declared in the repo, so there's nothing new for a human to judge."""
+def _words(seg: str) -> list[str] | None:
+    """The segment's words after the shell removes quotes and escapes. None if it can't be split.
+
+    shlex is pure Python and builds its tokens one character at a time, so it costs seconds on a
+    megabyte-sized segment. With no quote and no backslash there is nothing for it to remove, and
+    splitting on the shell's own whitespace set gives the same words at C speed.
+    """
+    if _NEEDS_SHELL.search(seg) is None:
+        return [w for w in _WHITESPACE_SPLIT.split(seg) if w]
     import shlex
 
-    if _LOCAL_ONLY.search(seg):
-        return True
     try:
-        toks = shlex.split(seg, posix=True)
+        return shlex.split(seg, posix=True)
     except ValueError:
+        return None
+
+
+def _local_install(seg: str, words: list[str] | None) -> bool:
+    """Installs from a lockfile, manifest or local path: the destination is the configured registry and
+    the packages are already declared in the repo, so there's nothing new for a human to judge."""
+    if _LOCAL_ONLY.search(seg):  # the caller checks this before splitting; kept so the answer stands alone
+        return True
+    if words is None:
         return False
+    toks = list(words)
     while toks and toks[0] in ("sudo", "python", "python3", "py", "-m"):
         toks = toks[1:]
     if not toks:
@@ -453,14 +488,10 @@ _DEV_SOCKET = re.compile(r"/dev/(?:tcp|udp)/([^/\s]+)/\d+")
 _RUNTIME_PART = re.compile(r"[$`]|%\w+%")
 
 
-def _shell_destinations(seg: str) -> tuple[list[str], bool]:
+def _shell_destinations(seg: str, words: list[str] | None) -> tuple[list[str], bool]:
     """Destinations a shell command names, read from its words after the shell removes quotes and
     escapes, so a quoted '@' or ')' can't cut the link short. (urls, could_not_split)."""
-    import shlex
-
-    try:
-        words = shlex.split(seg, posix=True)
-    except ValueError:
+    if words is None:
         return [], True
     out = []
     for w in words:
@@ -509,12 +540,17 @@ def _scan_code(code: str, g: Gate) -> None:
     is_program = any(k in code for k in ("import ", "def ", "const ", "await ", "=>", "require("))
     has_literal = bool(_URL_RE.search(code))
     for seg in _segments(code):
-        if seg.lstrip().startswith(("#", "//")) or not _NET_RE.search(seg):
+        # The cheap questions first, in the order that costs least: a comment, a segment with no
+        # network program in it, or a local install is answered without splitting the segment into
+        # words, and splitting a multi-megabyte segment for nothing is the slow path this avoids.
+        if (seg.lstrip().startswith(("#", "//")) or not _NET_RE.search(seg)
+                or _LOCAL_ONLY.search(seg)):
             continue
-        if _local_install(seg) or (_TEXT_ONLY.match(seg) and not _SUBST.search(seg)):
+        words = _words(seg)
+        if _local_install(seg, words) or (_TEXT_ONLY.match(seg) and not _SUBST.search(seg)):
             continue
         if not is_program:  # program source is read by the literal/run-time checks, not as shell words
-            dests, unsplittable = _shell_destinations(seg)
+            dests, unsplittable = _shell_destinations(seg, words)
             if unsplittable:
                 g.opaque(f"'{seg[:60]}'")
                 continue
@@ -531,7 +567,7 @@ def _scan_code(code: str, g: Gate) -> None:
         indirect = bool(_INDIRECT_RE.search(seg))
         if seg_urls and not indirect:
             continue
-        if bare and not indirect and not _CODE_LIKE.search(seg):
+        if bare and not indirect and not _code_like(seg):
             continue  # a shell command naming its host; in code, only a literal URL counts as readable
         if is_program and has_literal and not indirect:
             continue  # url = "https://..." on one line, requests.get(url) on the next
