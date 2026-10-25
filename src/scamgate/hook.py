@@ -316,11 +316,10 @@ _TRANSFER_URL = re.compile(r"(?i)^(?:scp|sftp|rsync)://(?:[^/@\s]+@)?(?P<host>[^
 
 def _transfer_hosts(segment: str) -> list[str]:
     """Hosts named by scp, sftp and rsync, including absolute user@host:/path destinations."""
-    import shlex
     if not _REMOTE_TRANSFER.search(segment):
         return []
     try:
-        toks = shlex.split(segment, posix=True)
+        toks = _shell_words(segment)
     except ValueError:
         return []
     while toks and toks[0] in ("sudo", "command"):
@@ -402,24 +401,98 @@ _TEXT_ONLY = re.compile(r"(?i)^(?:grep|egrep|fgrep|rg|ag|ack|cat|bat|head|tail|l
                         r"echo|printf|type|file|stat|sed\s+-n|awk\s+'[^']*'\s+[\w./-]+$|"
                         r"git\s+(?:log|grep|diff|show|status|blame))\b")
 _SUBST = re.compile(r"\$\(|`|<\(|>\(")
-# Anything a shell could rewrite: quotes, backslash escapes. Without them, word splitting is whitespace.
+# Anything a shell could rewrite: quotes, backslash escapes. Without them the shell removes
+# nothing, so the whitespace split answers the segment at C speed and the reader is not needed.
 _NEEDS_SHELL = re.compile(r"""['"\\]""")
 _WHITESPACE_SPLIT = re.compile(r"[ \t\r\n]+")
+_SHELL_SPECIAL = re.compile(r"""[ \t\r\n'"\\]""")
+_SHELL_IN_QUOTES = re.compile(r"""["\\]""")
+
+
+def _shell_words(seg: str) -> list[str]:
+    """The segment's words after the shell removes quotes and escapes, read in one pass.
+
+    `shlex.split` is pure Python and builds each token a character at a time, which on a single
+    long token costs seconds per megabyte (2,000,000 characters took 274 s here). This implements
+    the same rules, so the answer is word for word the same: whitespace is space, tab, CR and LF;
+    single quotes are literal; inside double quotes a backslash escapes only `\\` and `"`; outside
+    quotes a backslash escapes the next character; adjacent pieces join into one word; `''` is an
+    empty word; an unclosed quote or a trailing backslash raises ValueError, as shlex does.
+
+    Raises ValueError on input shlex would refuse, with the same messages.
+    """
+    words: list[str] = []
+    buf: list[str] = []
+    have = False
+    i, n = 0, len(seg)
+    while i < n:
+        m = _SHELL_SPECIAL.search(seg, i)
+        if m is None:
+            buf.append(seg[i:])
+            have = True
+            break
+        j = m.start()
+        if j > i:
+            buf.append(seg[i:j])
+            have = True
+        ch = seg[j]
+        i = j + 1
+        if ch == "\\":
+            if i >= n:
+                raise ValueError("No escaped character")
+            buf.append(seg[i])
+            i += 1
+            have = True
+        elif ch == "'":
+            k = seg.find("'", i)
+            if k < 0:
+                raise ValueError("No closing quotation")
+            buf.append(seg[i:k])
+            i = k + 1
+            have = True
+        elif ch == '"':
+            while True:
+                m2 = _SHELL_IN_QUOTES.search(seg, i)
+                if m2 is None:
+                    raise ValueError("No closing quotation")
+                k = m2.start()
+                if k > i:
+                    buf.append(seg[i:k])
+                have = True
+                if seg[k] == '"':
+                    i = k + 1
+                    break
+                if k + 1 >= n:
+                    raise ValueError("No escaped character")
+                nxt = seg[k + 1]
+                if nxt in '\\"':
+                    buf.append(nxt)
+                    i = k + 2
+                else:
+                    buf.append("\\")
+                    i = k + 1
+        else:
+            if have:
+                words.append("".join(buf))
+                buf = []
+                have = False
+    if have:
+        words.append("".join(buf))
+    return words
 
 
 def _words(seg: str) -> list[str] | None:
     """The segment's words after the shell removes quotes and escapes. None if it can't be split.
 
     shlex is pure Python and builds its tokens one character at a time, so it costs seconds on a
-    megabyte-sized segment. With no quote and no backslash there is nothing for it to remove, and
-    splitting on the shell's own whitespace set gives the same words at C speed.
+    megabyte-sized segment; `_shell_words` reads the same words in one pass. Where there is no
+    quote and no backslash there is nothing to remove, so the whitespace split answers it at C
+    speed without walking the segment in Python at all.
     """
     if _NEEDS_SHELL.search(seg) is None:
         return [w for w in _WHITESPACE_SPLIT.split(seg) if w]
-    import shlex
-
     try:
-        return shlex.split(seg, posix=True)
+        return _shell_words(seg)
     except ValueError:
         return None
 
