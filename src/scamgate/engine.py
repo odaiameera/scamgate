@@ -38,10 +38,10 @@ def _run(kind: Kind, check: Any, config: dict[str, Any] | None,
     if kind == "url":
         feeds = feeds_mod.current_index() if feeds is None else feeds
         if not feeds:
-            warnings.append("No known-bad-link feeds cached; run `scamgate update-feeds`.")
+            warnings.append("No known-bad-link feeds are cached. " + feeds_mod.REFRESH_HINT)
         elif stale := feeds.stale_feeds():
             warnings.append(f"Feed cache older than {feeds_mod.STALE_AFTER_HOURS}h for: "
-                            f"{', '.join(sorted(stale))}. Run `scamgate update-feeds`.")
+                            f"{', '.join(sorted(stale))}. " + feeds_mod.REFRESH_HINT)
     unreadable, checked_host = False, None
     if kind == "url":
         from .rules.url import parse

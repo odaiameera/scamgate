@@ -23,8 +23,11 @@ If a live `scamgate serve` holds `.venv` (Windows locks the exe), use a separate
 - `registry.py`: `@register(rule_id, kind)` rule registry
 - `rules/url.py`, `rules/payment.py`: rules; `config/rules.yaml`: weights, thresholds, word lists
 - `engine.py`: runs rules, scores, decides; payee facts come from history, not the caller
-- `feeds.py`: known-bad-link feeds. Only `update-feeds` touches the network; checks read the cache
+- `feeds.py`: known-bad-link feeds. Only `update_feeds()` touches the network; checks read the cache
   (`LazyFeedIndex` for the hook)
+- `refresh.py`: argument-free feed refresh (lock file, age checks) behind the Hermes plugin's
+  `/scamgate update`, `scamgate_update_feeds` tool, `hermes scamgate ...` CLI and background refresh.
+  Needs only the plugin's dependencies (no typer/rich)
 - `hostnorm.py`: host canonicalisation (percent-decoding, numeric IPv4 forms)
 - `hook.py` / `hook_entry.py`: the enforcement hook (Hermes + Claude Code dialects)
 - `guard.py`: human-only writes (`require_human`) and HMAC signing of state records
@@ -36,7 +39,11 @@ If a live `scamgate serve` holds `.venv` (Windows locks the exe), use a separate
 
 ## Rules of the road
 
-- Deterministic and offline: no network calls or LLMs in the default path. Tests never touch the network.
+- Deterministic and offline: no network calls or LLMs in the check path. Only feed refreshes download,
+  always the default feeds from fixed URLs; nothing an agent can call picks the feeds, URLs or cache folder.
+  Tests never touch the network.
+- The Hermes plugin must work with only `plugin.yaml`'s `python_dependencies` installed: no typer, rich or
+  mcp imports on the plugin path (`scripts/plugin_smoke.py` checks this in CI).
 - Every rule needs a `rules.yaml` entry, tests, a scenario where it makes sense, and a plain-English
   explanation a non-technical person can act on.
 - The hook never outputs "allow". It may only block or ask; silence means no objection.

@@ -213,12 +213,15 @@ hermes plugins enable scamgate</code></pre>
         <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/plugin-catalog">Hermes catalog guide</a>
         for installation and updates.</p>
       <p>The plugin registers <code>pre_tool_call</code> and <code>post_tool_call</code>,
-        <code>scamgate_check_url</code>, <code>scamgate_check_payment</code> and <code>/scamgate status</code>.
+        <code>scamgate_check_url</code>, <code>scamgate_check_payment</code>, <code>scamgate_update_feeds</code>,
+        <code>/scamgate status | review | update</code> and <code>hermes scamgate update-feeds | feeds-status</code>.
+        A plugin install has no <code>scamgate</code> command on <code>PATH</code>.
         You do not need the separate shell hook for the same Hermes instance.</p>
       <div class="note"><b>Before enabling</b>Agent tool calls that edit Hermes config, profiles, plugins or hooks,
         or disable approvals, are blocked. With approvals off, an <code>ask</code> becomes a block by default;
         <code>plugins.entries.scamgate.settings.when_approvals_off: allow</code> restores asks, which Hermes may auto-approve.
-        State and feed caches are shared across profiles by default. Feed downloads are explicit;
+        State and feed caches are shared across profiles by default. The plugin downloads the phishing
+        lists every 6 hours unless <code>auto_update_feeds</code> is <code>false</code>;
         optional <code>SCAMGATE_RDAP=live</code> sends checked domains to their RDAP registries.
         Read <a href="#mechanics">Mechanics</a>, <a href="#feeds">Feeds</a> and <a href="#limits">Limits</a> before use.</div>
       <h3>Claude Code</h3>
@@ -288,7 +291,9 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
 
     <section id="feeds">
       <h2><span class="num">09</span>Known-bad-link feeds</h2>
-      <p>Only <code>scamgate update-feeds</code> touches the network. Checks read the local cache. No feed data is
+      <p>Only a feed refresh touches the network: <code>scamgate update-feeds</code>, or in the Hermes plugin
+        <code>/scamgate update</code>, <code>hermes scamgate update-feeds</code>, the <code>scamgate_update_feeds</code>
+        tool and the background refresh, which all use the same downloader. Checks read the local cache. No feed data is
         bundled. A failed download keeps that feed's previous cache, and verdicts warn when no feed is cached or a feed
         is older than 24 hours. A running MCP server picks up a refreshed cache without a restart.</p>
       <table class="tbl">
@@ -300,8 +305,17 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
           <tr><td><code>urlhaus</code></td><td>if key set</td><td><a href="https://urlhaus.abuse.ch/api/">abuse.ch URLhaus</a>: free Auth-Key required (<code>SCAMGATE_URLHAUS_AUTH_KEY</code>), fair-use terms</td></tr>
         </tbody>
       </table>
-      <p>You're responsible for following each feed's terms. Refresh on a schedule, for example every 6 hours:</p>
+      <p>You're responsible for following each feed's terms. For the CLI or the MCP server, refresh on a schedule,
+        for example every 6 hours:</p>
 <pre class="code" data-lang="cron"><code>0 */6 * * * scamgate update-feeds &gt;&gt; ~/.cache/scamgate/update.log 2&gt;&amp;1</code></pre>
+      <h3>In the Hermes plugin</h3>
+      <p>The plugin refreshes the default feeds by itself, about two minutes after Hermes starts and then every
+        6 hours, with a lock file so only one Hermes process downloads at a time. By hand: <code>/scamgate update</code>
+        in a chat, or <code>hermes scamgate update-feeds</code> and <code>hermes scamgate feeds-status</code> in a terminal.
+        Agents get <code>scamgate_update_feeds</code>, which takes no arguments: it always fetches the default feeds from
+        their fixed sources into the configured cache, at most once an hour, so an agent can ask for a refresh but can't
+        choose what lands in the cache. Turn the background refresh off with
+        <code>plugins.entries.scamgate.settings.auto_update_feeds: false</code> or <code>SCAMGATE_AUTO_UPDATE=0</code>.</p>
       <h3>False positives on shared platforms</h3>
       <p>Feeds list single bad pages on big shared platforms (Google Docs and Sites, Microsoft login, Discord CDN,
         link shorteners, Vercel). For hosts under <code>lists.feed_host_ignore</code> and official brand domains, only

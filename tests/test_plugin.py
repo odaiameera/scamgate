@@ -36,7 +36,7 @@ def test_register_wires_the_gate():
     ctx = Ctx()
     plugin.register(ctx)
     assert set(ctx.hooks) == {"pre_tool_call", "post_tool_call"}
-    assert set(ctx.tools) == {"scamgate_check_url", "scamgate_check_payment"}
+    assert set(ctx.tools) == {"scamgate_check_url", "scamgate_check_payment", "scamgate_update_feeds"}
     assert "scamgate" in ctx.commands
 
 

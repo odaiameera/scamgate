@@ -227,7 +227,10 @@ Note: with the shell hook, `/yolo` or `approvals.mode: off` auto-approves every 
 **Hermes plugin** (preferred once it is in the catalog). Same checks as the shell hook, in-process,
 about 50× faster, and it can see a per-chat `/yolo`. Needs Hermes 0.19.1+. Until the catalog entry
 lands, install the `src/scamgate` directory as a plugin. It registers `pre_tool_call`,
-`scamgate_check_url`, `scamgate_check_payment`, and `/scamgate status`.
+`scamgate_check_url`, `scamgate_check_payment`, `scamgate_update_feeds`, `/scamgate status | review |
+update` and `hermes scamgate update-feeds | feeds-status`. It keeps the phishing lists fresh by itself:
+see [In the Hermes plugin](#in-the-hermes-plugin). A plugin install has no `scamgate` command on
+`PATH`; use `/scamgate` or `hermes scamgate` instead.
 
 **Claude Code** (`.claude/settings.json`). Needs Claude Code **v2.1.295+** for `onFailure`.
 Without it, a hook that crashes, times out or can't start lets the tool call through:
@@ -310,8 +313,9 @@ from IANA's RDAP bootstrap list, cached in the feed cache dir.
 
 ## Known-bad-link feeds
 
-Only `scamgate update-feeds` touches the network. Checks read a local cache. No feed data is
-bundled in this repo.
+Only a feed refresh touches the network: `scamgate update-feeds`, or in the Hermes plugin
+`/scamgate update`, `hermes scamgate update-feeds`, the `scamgate_update_feeds` tool and the background
+refresh. They all use the same downloader. Checks read a local cache. No feed data is bundled in this repo.
 
 ```bash
 scamgate update-feeds            # default feeds
@@ -338,11 +342,33 @@ disabled) and Google Safe Browsing / Web Risk (non-commercial only, or paid).
 Matching: an exact listed URL scores 100, an exact listed host 75, and a subdomain of a listed
 domain (domain feeds only) 50.
 
-Refresh with cron, for example every 6 hours:
+For the CLI or the MCP server, refresh with cron, for example every 6 hours:
 
 ```cron
 0 */6 * * * cd /path/to/scamgate && uv run scamgate update-feeds >> ~/.cache/scamgate/update.log 2>&1
 ```
+
+### In the Hermes plugin
+
+The plugin refreshes the default feeds by itself: about two minutes after Hermes starts, and then every
+6 hours while Hermes runs. No cron line needed. A lock file in the cache folder makes sure only one
+Hermes process downloads at a time. Failures are logged and keep the old lists. To refresh by hand:
+
+```bash
+/scamgate update                  # in a chat
+hermes scamgate update-feeds      # in a terminal
+hermes scamgate feeds-status
+```
+
+Agents get a `scamgate_update_feeds` tool so they can refresh stale lists themselves. It takes no
+arguments: it always downloads the default feeds from their fixed sources into the configured cache,
+and does nothing if they were refreshed in the last hour. An agent can ask for a refresh but can't
+choose what is downloaded or where it goes. Shell commands that call the downloader with their own
+arguments are blocked, and direct writes to the cache folder still are.
+
+Turn the background refresh off with `plugins.entries.scamgate.settings.auto_update_feeds: false` or
+`SCAMGATE_AUTO_UPDATE=0`. The refresh sends nothing about the links you check: it downloads whole
+lists.
 
 Your own blocklist: [`src/scamgate/data/blocklist.txt`](src/scamgate/data/blocklist.txt) (or `$SCAMGATE_BLOCKLIST`). It
 ships with a few made-up `.example` domains.
@@ -405,7 +431,11 @@ runs the unit tests (CI runs them on Python 3.11–3.13). They use fixtures and 
 - Tamper protection stops an agent's normal tools: writes to scamgate, its state and feed
   cache, its virtualenv (a new `.pth` file fails the integrity check), `~/.claude` and project
   `.claude/settings*.json`, and the Hermes config, however the path is spelled (`~`, `$HOME`,
-  globs, `cd` + relative). It isn't a sandbox: code running as you can read the signing key and
+  globs, `cd` + relative, `./`, `//`, `..`). A path only counts when it names the folder itself:
+  `~/.cache/scamgate-feeds.log` is not inside `~/.cache/scamgate`. Commands that only read
+  (`ls`, `cat`, `head`, `tail`, `grep`, `rg`, `find`, `stat`, `which`, `wc`, `du`, `sha256sum`) pass
+  on protected paths as long as they have no redirect other than to `/dev/null`, no `$(…)` or
+  backticks, and no `-exec`, `-delete`, `-fprint` or `--pre`. It isn't a sandbox: code running as you can read the signing key and
   rewrite any file, and code can be written to slip past pattern matching. For the strongest
   setup, give the agent no direct shell access, install scamgate where the agent's user can't
   write (`uv tool install` as another user, or read-only), and for Claude Code put the hook in

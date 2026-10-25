@@ -9,6 +9,7 @@ provides_hooks:
 provides_tools:
   - scamgate_check_url
   - scamgate_check_payment
+  - scamgate_update_feeds
 python_dependencies:
   - "pydantic>=2.7,<3"
   - "pyyaml>=6.0,<7"
@@ -17,3 +18,7 @@ config_schema:
     type: str
     description: "When Hermes approvals are off, block asks (default) or allow them."
     default: block
+  auto_update_feeds:
+    type: bool
+    description: "Refresh the phishing lists in the background every 6 hours (default on). Set false to refresh only with /scamgate update or hermes scamgate update-feeds."
+    default: true

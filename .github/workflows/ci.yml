@@ -40,3 +40,29 @@ jobs:
 
       - name: Scenario bench (must match expected decisions)
         run: uv run --locked scamgate bench --strict
+
+      - name: Feed update on sample data (scamgate update-feeds, feeds-status)
+        run: uv run --locked pytest -q tests/test_update_feeds_cli.py tests/test_plugin_feed_updates.py
+
+  plugin-install:
+    name: Hermes plugin install (no typer, sample feeds)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.11"
+
+      - name: Bare venv with only the plugin's python_dependencies
+        run: |
+          uv venv "$RUNNER_TEMP/bare"
+          uv pip install --python "$RUNNER_TEMP/bare" "pydantic>=2.7,<3" "pyyaml>=6.0,<7"
+          mkdir -p "$RUNNER_TEMP/plugins"
+          cp -r src/scamgate "$RUNNER_TEMP/plugins/scamgate"
+
+      - name: hermes scamgate update-feeds, /scamgate update and the update tool
+        run: '"$RUNNER_TEMP/bare/bin/python" scripts/plugin_smoke.py "$RUNNER_TEMP/plugins" tests/fixtures/feeds'

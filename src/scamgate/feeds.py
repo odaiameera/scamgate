@@ -1,7 +1,7 @@
 """Known-bad-link feeds: download into a local cache, then look up offline.
 
-`scamgate update-feeds` is the only code path that touches the network. Checks only read
-the cache. Each feed is stored as its own normalized file, so every entry keeps its source,
+`update_feeds()` is the only code path that touches the network (`scamgate update-feeds`, and the
+Hermes plugin's refresh in refresh.py). Checks only read the cache. Each feed is stored as its own normalized file, so every entry keeps its source,
 and `meta.json` records when each feed was last fetched successfully.
 
 Cache dir: $SCAMGATE_CACHE_DIR, else $XDG_CACHE_HOME/scamgate, else ~/.cache/scamgate.
@@ -25,8 +25,10 @@ from .hostnorm import canon_host
 
 ENV_CACHE_DIR = "SCAMGATE_CACHE_DIR"
 ENV_URLHAUS_KEY = "SCAMGATE_URLHAUS_AUTH_KEY"
-USER_AGENT = "scamgate/0.1 (+https://github.com/odaiameera/scamgate)"
+USER_AGENT = "scamgate/0.3 (+https://github.com/odaiameera/scamgate)"
 STALE_AFTER_HOURS = 24
+REFRESH_HINT = ("Refresh them with `scamgate update-feeds`, or with `/scamgate update` "
+                "(`hermes scamgate update-feeds` in a terminal) when scamgate is a Hermes plugin.")
 
 
 def cache_dir() -> Path:
@@ -199,8 +201,9 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def update_feeds(names: list[str] | None = None, *, directory: Path | None = None,
-                 fetch: Callable[[str], str] = _download) -> list[FeedResult]:
+                 fetch: Callable[[str], str] | None = None) -> list[FeedResult]:
     """Download feeds into the cache. A failed feed keeps its previous cache files."""
+    fetch = fetch or _download  # looked up per call, so tests and the CI smoke job can serve fixtures
     d = directory or cache_dir()
     d.mkdir(parents=True, exist_ok=True)
     meta = read_meta(d)

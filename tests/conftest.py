@@ -30,6 +30,7 @@ def _isolated_state(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("SCAMGATE_PROTECT", raising=False)
     monkeypatch.delenv("SCAMGATE_RDAP", raising=False)  # domain age never goes online in tests
     monkeypatch.delenv("HERMES_HOME", raising=False)
+    monkeypatch.setenv("SCAMGATE_AUTO_UPDATE", "0")  # plugin.register() never starts the background refresh in tests
     from scamgate import guard, hook, overrides, payees
 
     monkeypatch.setattr(hook, "_FEEDS", None)
