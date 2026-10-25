@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -222,14 +223,32 @@ def _expand(text: str) -> str:
     return t
 
 
+def _tidy_paths(norm: str) -> str:
+    """Spell paths in command text one way: `a/./b`, `a//b` and `a/x/../b` all become `a/b`."""
+    norm = re.sub(r"/(?:\./)+", "/", norm)
+    norm = re.sub(r"(?<!:)/{2,}", "/", norm)  # keeps https://
+    for _ in range(16):
+        tidier = re.sub(r"/(?!\.\.(?:/|$))[^/\s'\"`;|&<>]+/\.\.(?=/|$|[\s'\"`;|&<>])", "", norm)
+        if tidier == norm:
+            break
+        norm = tidier
+    return norm
+
+
+def _names_path(text: str, path: str) -> bool:
+    """`path` appears in `text` as a whole folder or file: `.cache/scamgate` is not `.cache/scamgate-feeds.log`."""
+    return re.search(re.escape(path) + r"(?![\w.-])", text) is not None
+
+
 def _mentions_protected(text: str, roots: list[str]) -> str | None:
     norm = _expand(text).lower()
     norm = re.sub(r"(?<![a-z])/([a-z])/", lambda m: f"{m.group(1)}:/", norm)
+    forms = (norm, _tidy_paths(norm))  # both: `scamgate/..` names the folder too
     for r in roots:
         tail = r.split(":/", 1)[-1] if ":/" in r else r.lstrip("/")
-        if r in norm or (len(tail) > 12 and tail in norm):
+        if any(_names_path(f, r) or (len(tail) > 12 and _names_path(f, tail)) for f in forms):
             return r
-    if m := _TAIL_RE.search(norm):
+    if m := _TAIL_RE.search(norm) or _TAIL_RE.search(forms[1]):
         return m.group(0).strip()
     return None
 
@@ -605,9 +624,56 @@ def _tamper_reason(tool: str, tool_input: dict) -> str | None:
         code = "\n".join(_strings({k: tool_input.get(k) for k in CODE_KEYS}))
         if m := _TAMPER_CMD.search(code):
             return f"the command would weaken or remove the scam gate ('{m.group(0).strip()}')"
-        if (hit := _mentions_protected(code, roots)) and _SHELL_WRITE.search(code):
+        read_only = _read_only_shell(code)
+        if not read_only and "scamgate" in code.lower() and (m := _FEED_POISON.search(code)):
+            return (f"the command would fill scamgate's phishing lists with data it chose ('{m.group(0).strip()}'). "
+                    "To refresh the lists, use the scamgate_update_feeds tool or /scamgate update")
+        if (hit := _mentions_protected(code, roots)) and not read_only \
+                and _SHELL_WRITE.search(_HARMLESS_REDIRECT.sub(" ", code)):
             return f"the command would change scamgate's protected files ({hit})"
     return None
+
+
+# Redirects that write nowhere: `2>/dev/null`, `&>/dev/null`, `2>&1`, `>nul`.
+_HARMLESS_REDIRECT = re.compile(r"(?i)(?:\d|&)?>>?\s*(?:/dev/null|nul)(?![\w./\\-])|\d?>&\d")
+# Commands that only read or print. Writers with a flag that writes (`sort -o`, `tree -o`), and
+# commands that run other commands (`xargs`, `env`, `sudo`), are deliberately missing.
+_READERS = {"ls", "dir", "cat", "head", "tail", "find", "grep", "egrep", "fgrep", "rg", "stat", "which",
+            "wc", "du", "cd", "pwd", "realpath", "readlink", "sha256sum", "sha1sum", "md5sum", "echo", "type"}
+# Anything that writes or runs something else, even inside a reader: redirects, substitutions,
+# find's -exec/-delete/-fprint, ripgrep's --pre.
+_NOT_READ_ONLY = re.compile(r"""(?ix)[<>`] | \$\( | \s-(?:exec|execdir|ok|okdir|delete|fprint0?|fprintf|fls)\b
+                                | \s--pre(?:-glob)?\b""")
+_READ_SPLIT = re.compile(r"\n|;|&&|\|\||\||&")
+# Feed-cache writes with arguments an agent picked (what to fetch, from where, into which folder).
+# A plain refresh goes through the scamgate_update_feeds tool, which takes no arguments.
+_FEED_POISON = re.compile(r"\bupdate_feeds\s*\(\s*[^)\s]|\b_atomic_write\s*\(|\b_download\s*=(?!=)|"
+                          r"\bFEEDS\s*\[[^\]]*\]\s*=(?!=)|\bFEEDS\.(?:update|setdefault|pop|clear)\b")
+
+
+def _read_only_shell(code: str) -> bool:
+    """True for a shell command that only reads (ls, cat, grep, find, ...) and writes nowhere."""
+    text = _HARMLESS_REDIRECT.sub(" ", code)
+    if _NOT_READ_ONLY.search(text):
+        return False
+    segments = [s.strip() for s in _READ_SPLIT.split(text)]
+    if not any(segments):
+        return False
+    for seg in segments:
+        if not seg:
+            continue
+        try:
+            words = shlex.split(seg, posix=True)
+        except ValueError:
+            return False
+        if not words:
+            continue
+        cmd = re.split(r"[/\\]", words[0])[-1].lower()
+        if cmd.endswith(".exe"):
+            cmd = cmd[:-4]
+        if cmd not in _READERS:
+            return False
+    return True
 
 
 # ------------------------------------------------------------------ decision
@@ -637,12 +703,14 @@ def _feeds() -> Any:
 
 def _feed_status() -> str | None:
     """None when the feeds are fine, else a short warning for the human."""
+    from .feeds import REFRESH_HINT
+
     f = _feeds()
     if not f:
         return ("No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. "
-                "Run `scamgate update-feeds`.")
+                + REFRESH_HINT)
     if stale := f.stale_feeds(hours=STALE_FOR_HOOK_HOURS):
-        return f"scamgate's phishing lists are out of date ({', '.join(sorted(stale))}). Run `scamgate update-feeds`."
+        return f"scamgate's phishing lists are out of date ({', '.join(sorted(stale))}). " + REFRESH_HINT
     return None
 
 

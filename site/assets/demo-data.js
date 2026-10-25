@@ -224,7 +224,7 @@ window.SCAMGATE_DEMO = {
    },
    "output": {
     "action": "block",
-    "message": "scamgate blocked this: Do not proceed with this link. Main concern: The link shows 'paypal.com' before an '@', but browsers ignore everything before the '@'. It actually goes to evil.example. This is a classic way to fake a trusted address. (score 100/100, link host: evil.example). Don't retry it another way. Tell the user what was blocked and why. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Run `scamgate update-feeds`."
+    "message": "scamgate blocked this: Do not proceed with this link. Main concern: The link shows 'paypal.com' before an '@', but browsers ignore everything before the '@'. It actually goes to evil.example. This is a classic way to fake a trusted address. (score 100/100, link host: evil.example). Don't retry it another way. Tell the user what was blocked and why. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Refresh them with `scamgate update-feeds`, or with `/scamgate update` (`hermes scamgate update-feeds` in a terminal) when scamgate is a Hermes plugin."
    }
   },
   {
@@ -237,7 +237,7 @@ window.SCAMGATE_DEMO = {
    },
    "output": {
     "action": "approve",
-    "message": "scamgate: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Run `scamgate update-feeds`. Approve once, only if you trust these links.",
+    "message": "scamgate: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Refresh them with `scamgate update-feeds`, or with `/scamgate update` (`hermes scamgate update-feeds` in a terminal) when scamgate is a Hermes plugin. Approve once, only if you trust these links.",
     "rule_key": "scamgate:nofeeds:4cdb2f20d8"
    }
   },
@@ -249,7 +249,7 @@ window.SCAMGATE_DEMO = {
    },
    "output": {
     "action": "approve",
-    "message": "scamgate: this call can reach the network, but scamgate can't see where it goes ('curl -s \"$PAY_URL\"'), so it can't check it. Approve once, only if you know the destination. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Run `scamgate update-feeds`.",
+    "message": "scamgate: this call can reach the network, but scamgate can't see where it goes ('curl -s \"$PAY_URL\"'), so it can't check it. Approve once, only if you know the destination. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Refresh them with `scamgate update-feeds`, or with `/scamgate update` (`hermes scamgate update-feeds` in a terminal) when scamgate is a Hermes plugin.",
     "rule_key": "scamgate:opaque:terminal:f65cd39b11"
    }
   },
@@ -261,7 +261,7 @@ window.SCAMGATE_DEMO = {
    },
    "output": {
     "action": "block",
-    "message": "scamgate blocked this: Do not proceed with this link. Main concern: 'paypal.com.secure-login.xyz' starts with 'paypal.com', but the real address is secure-login.xyz. Putting a real site's name in front of another domain is a common phishing trick. (score 100/100, link host: paypal.com.secure-login.xyz). Don't retry it another way. Tell the user what was blocked and why. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Run `scamgate update-feeds`."
+    "message": "scamgate blocked this: Do not proceed with this link. Main concern: 'paypal.com.secure-login.xyz' starts with 'paypal.com', but the real address is secure-login.xyz. Putting a real site's name in front of another domain is a common phishing trick. (score 100/100, link host: paypal.com.secure-login.xyz). Don't retry it another way. Tell the user what was blocked and why. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Refresh them with `scamgate update-feeds`, or with `/scamgate update` (`hermes scamgate update-feeds` in a terminal) when scamgate is a Hermes plugin."
    }
   },
   {
@@ -286,7 +286,7 @@ window.SCAMGATE_DEMO = {
     "hookSpecificOutput": {
      "hookEventName": "PreToolUse",
      "permissionDecision": "ask",
-     "permissionDecisionReason": "scamgate: Check with the human before this link. Main concern: The link has a username before the site name. Real sites almost never use this, and it can hide where the link really goes: shop.example. (score 40/100). Approve only if you trust where this link goes. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Run `scamgate update-feeds`."
+     "permissionDecisionReason": "scamgate: Check with the human before this link. Main concern: The link has a username before the site name. Real sites almost never use this, and it can hide where the link really goes: shop.example. (score 40/100). Approve only if you trust where this link goes. Note: No known-bad-link feeds are cached, so scamgate is checking without its phishing lists. Refresh them with `scamgate update-feeds`, or with `/scamgate update` (`hermes scamgate update-feeds` in a terminal) when scamgate is a Hermes plugin."
     }
    }
   },

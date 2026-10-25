@@ -8,14 +8,17 @@ becomes a block unless the user set `when_approvals_off: allow`.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import threading
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from . import asklog, hook, tools
+from . import asklog, hook, refresh, tools
 
 _CTX: Any = None
+_log = logging.getLogger("scamgate")
 
 
 def approvals_bypassed(session_id: str = "") -> bool:
@@ -100,17 +103,19 @@ def check_payment(args: dict, **_: Any) -> str:
 
 
 def slash(raw_args: str = "") -> str:
+    """`/scamgate status | review | update`. Hermes runs this in a worker thread, so `update` can download."""
     cmd = (raw_args or "").strip().lower()
     if cmd in ("", "status"):
         try:
             from .feeds import LazyFeedIndex
             feeds = LazyFeedIndex()
-            stale = sorted(feeds.stale_feeds(hours=24)) if feeds else []
             if not feeds:
-                return "scamgate: no phishing lists cached. Run `scamgate update-feeds`."
-            if stale:
-                return "scamgate: lists are stale (" + ", ".join(stale) + "). Run `scamgate update-feeds`."
-            return "scamgate: phishing lists are loaded."
+                return "scamgate: no phishing lists cached. Run `/scamgate update` to download them."
+            _, lines = refresh.status()
+            stale = sorted(feeds.stale_feeds(hours=24))
+            head = ("scamgate: lists are stale (" + ", ".join(stale) + "). Run `/scamgate update`." if stale
+                    else "scamgate: phishing lists are loaded.")
+            return head + "\n" + "\n".join(lines)
         except Exception as exc:
             return f"scamgate: could not read feed status ({type(exc).__name__})."
     if cmd == "review":
@@ -124,8 +129,77 @@ def slash(raw_args: str = "") -> str:
                          f"{r.blocks} blocked" + (f"; top rule {top}" if top else ""))
         return "scamgate, last 7 days:\n" + "\n".join(lines)
     if cmd == "update":
-        return "scamgate: feed updates download data from the internet. Run `scamgate update-feeds` yourself."
+        return refresh.refresh().text()
     return "Usage: /scamgate status | review | update"
+
+
+def update_feeds_tool(args: Any = None, **_: Any) -> str:
+    """The agent's refresh button. It takes no arguments: whatever the agent sends is ignored, the default
+    feeds are downloaded from their fixed sources into the configured cache, at most once an hour."""
+    try:
+        out = refresh.refresh(if_older_than_hours=refresh.TOOL_MIN_GAP_HOURS)
+    except Exception as exc:  # a full disk or a broken cache folder must not crash the chat
+        return json.dumps({"updated": [], "failed": {"all": f"{type(exc).__name__}: {str(exc)[:200]}"},
+                           "skipped": ""})
+    return json.dumps({**out.as_dict(), "summary": out.text()})
+
+
+# ---------------------------------------------------------------- background refresh
+
+AUTO_FIRST_DELAY = 120.0  # seconds; a short-lived `hermes ...` command exits before the first pass
+AUTO_EVERY = 30 * 60.0  # seconds between checks; a pass downloads only when the lists are 6 hours old
+_AUTO_LOCK = threading.Lock()
+_AUTO: tuple[threading.Thread, threading.Event] | None = None
+
+
+def auto_update_enabled(ctx: Any = None) -> bool:
+    env = os.environ.get("SCAMGATE_AUTO_UPDATE")
+    if env is not None and env.strip().lower() in ("0", "false", "off", "no"):
+        return False
+    val = None
+    if ctx is not None:
+        try:
+            val = ctx.get_config("auto_update_feeds", None)
+        except Exception:
+            val = None
+    if isinstance(val, str):
+        return val.strip().lower() not in ("0", "false", "off", "no")
+    return val is None or bool(val)
+
+
+def _auto_loop(stop: threading.Event) -> None:
+    if stop.wait(AUTO_FIRST_DELAY):
+        return
+    while True:
+        try:
+            out = refresh.auto_pass()
+            if out.failed:
+                _log.warning("scamgate: background feed refresh failed for %s", ", ".join(out.failed))
+        except Exception:
+            _log.warning("scamgate: background feed refresh failed", exc_info=True)
+        if stop.wait(AUTO_EVERY):
+            return
+
+
+def start_auto_update(ctx: Any = None) -> threading.Thread | None:
+    """One daemon thread per process. Processes share the lock file, so only one downloads at a time."""
+    global _AUTO
+    if not auto_update_enabled(ctx):
+        return None
+    with _AUTO_LOCK:
+        if _AUTO is not None and _AUTO[0].is_alive() and not _AUTO[1].is_set():
+            return _AUTO[0]
+        stop = threading.Event()
+        thread = threading.Thread(target=_auto_loop, args=(stop,), name="scamgate-feed-refresh", daemon=True)
+        _AUTO = (thread, stop)
+        thread.start()
+    on_unload = getattr(ctx, "on_unload", None)
+    if callable(on_unload):
+        try:
+            on_unload(stop.set)
+        except Exception:
+            pass
+    return thread
 
 
 def _parameters(model: type[BaseModel]) -> dict:
@@ -148,6 +222,13 @@ _URL_SCHEMA = {"name": "scamgate_check_url", "description": tools.URL_DESCRIPTIO
                "parameters": _parameters(tools.UrlArgs)}
 _PAY_SCHEMA = {"name": "scamgate_check_payment", "description": tools.PAYMENT_DESCRIPTION,
                "parameters": _parameters(tools.PaymentArgs)}
+UPDATE_DESCRIPTION = (
+    "Refresh scamgate's phishing lists now. Use it when a scamgate verdict or /scamgate status says the lists "
+    "are missing or stale. Takes no arguments: it always downloads the default lists from their fixed sources, "
+    "and does nothing if they were refreshed in the last hour. The lists also refresh by themselves every 6 hours."
+)
+_UPDATE_SCHEMA = {"name": "scamgate_update_feeds", "description": UPDATE_DESCRIPTION,
+                  "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}
 
 
 def register(ctx) -> None:
@@ -159,5 +240,15 @@ def register(ctx) -> None:
                       description=_URL_SCHEMA["description"], emoji="🛡️")
     ctx.register_tool(name="scamgate_check_payment", toolset="scamgate", schema=_PAY_SCHEMA, handler=check_payment,
                       description=_PAY_SCHEMA["description"], emoji="🛡️")
-    ctx.register_command("scamgate", slash, description="scamgate status, review, or how to update feeds",
+    ctx.register_tool(name="scamgate_update_feeds", toolset="scamgate", schema=_UPDATE_SCHEMA,
+                      handler=update_feeds_tool, description=UPDATE_DESCRIPTION, emoji="🛡️")
+    ctx.register_command("scamgate", slash, description="scamgate status, review, or update the phishing lists",
                          args_hint="status|review|update")
+    if callable(getattr(ctx, "register_cli_command", None)):  # Hermes builds without it just skip the CLI
+        try:
+            ctx.register_cli_command("scamgate", help="scamgate phishing lists: update-feeds, feeds-status",
+                                     setup_fn=refresh.setup_cli, handler_fn=refresh.cli_main,
+                                     description="Refresh or inspect scamgate's cached phishing lists.")
+        except Exception:  # a CLI that can't be wired must never stop the gate from loading
+            _log.warning("scamgate: could not add `hermes scamgate`", exc_info=True)
+    start_auto_update(ctx)

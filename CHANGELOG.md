@@ -1,5 +1,41 @@
 # Changelog
 
+## [Unreleased]
+
+Feed refreshes that work on a plain Hermes plugin install, and fewer false blocks from the tamper guard.
+Reported from a real install, where `/scamgate update` told people to run a `scamgate update-feeds`
+command a plugin install doesn't have.
+
+### Hermes plugin
+- `/scamgate update` now downloads the phishing lists instead of pointing at a missing command, and
+  `/scamgate status` lists each feed with its age.
+- New `hermes scamgate update-feeds` and `hermes scamgate feeds-status`. They use Hermes' own command line, so
+  they need no extra packages (no typer, no `scamgate` on `PATH`).
+- New agent tool `scamgate_update_feeds`. It takes no arguments: it always downloads the default feeds from
+  their fixed sources into the configured cache, and does nothing if they were refreshed in the last hour.
+  An agent can ask for a refresh, but can't choose what lands in the cache.
+- Background refresh: about two minutes after Hermes starts, then every 6 hours. A lock file keeps
+  Hermes processes from downloading at the same time. Off with `auto_update_feeds: false` or
+  `SCAMGATE_AUTO_UPDATE=0`. No cron line needed.
+- Stale-list warnings now name the plugin commands as well as `scamgate update-feeds`.
+
+### Tamper guard
+- A path in a command only counts when it names the protected folder itself: a log file next to the feed
+  cache folder (`scamgate-feeds.log`) is no longer treated as inside it. `./`, `//` and `..` spellings of a
+  protected path are now caught too.
+- Read-only commands on protected paths pass: `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `find`, `stat`,
+  `which`, `wc`, `du`, `sha256sum` (and a few more), with `2>/dev/null` or `2>&1` allowed. A redirect,
+  `$(...)`, backticks, `-exec`, `-delete`, `-fprint`, `--pre` or any other command in the line makes it a
+  write check again, as before.
+- Commands that call the feed downloader with their own arguments (`update_feeds(fetch=...)`,
+  `_atomic_write`, swapping the downloader) are blocked: use the update tool or `/scamgate update`.
+
+### Tests and CI
+- New `tests/test_guard_boundaries.py` (quiet reads, the log file next to the cache, writes that must still
+  block, cache poisoning), `tests/test_plugin_feed_updates.py` and `tests/test_update_feeds_cli.py`.
+- CI runs `update-feeds` and `feeds-status` on sample feed data, and a new `plugin-install` job runs
+  `scripts/plugin_smoke.py` in a venv that has only the plugin's dependencies.
+
 ## [0.3.1] - 2026-10-22
 
 Security fixes from two review rounds (PRs #17 and #18). Install commands are pinned to `v0.3.1`.
