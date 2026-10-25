@@ -25,7 +25,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -624,12 +623,12 @@ def _tamper_reason(tool: str, tool_input: dict) -> str | None:
         code = "\n".join(_strings({k: tool_input.get(k) for k in CODE_KEYS}))
         if m := _TAMPER_CMD.search(code):
             return f"the command would weaken or remove the scam gate ('{m.group(0).strip()}')"
-        read_only = _read_only_shell(code)
-        if not read_only and "scamgate" in code.lower() and (m := _FEED_POISON.search(code)):
+        # The read-only test runs only once a write or a feed call is suspected: most commands never need it.
+        if "scamgate" in code.lower() and (m := _FEED_POISON.search(code)) and not _read_only_shell(code):
             return (f"the command would fill scamgate's phishing lists with data it chose ('{m.group(0).strip()}'). "
                     "To refresh the lists, use the scamgate_update_feeds tool or /scamgate update")
-        if (hit := _mentions_protected(code, roots)) and not read_only \
-                and _SHELL_WRITE.search(_HARMLESS_REDIRECT.sub(" ", code)):
+        if (hit := _mentions_protected(code, roots)) and _SHELL_WRITE.search(_HARMLESS_REDIRECT.sub(" ", code)) \
+                and not _read_only_shell(code):
             return f"the command would change scamgate's protected files ({hit})"
     return None
 
@@ -648,32 +647,31 @@ _READ_SPLIT = re.compile(r"\n|;|&&|\|\||\||&")
 # Feed-cache writes with arguments an agent picked (what to fetch, from where, into which folder).
 # A plain refresh goes through the scamgate_update_feeds tool, which takes no arguments.
 _FEED_POISON = re.compile(r"\bupdate_feeds\s*\(\s*[^)\s]|\b_atomic_write\s*\(|\b_download\s*=(?!=)|"
-                          r"\bFEEDS\s*\[[^\]]*\]\s*=(?!=)|\bFEEDS\.(?:update|setdefault|pop|clear)\b")
+                          r"\bFEEDS\s*\[[^\]\n]{0,200}\]\s*=(?!=)|\bFEEDS\.(?:update|setdefault|pop|clear)\b")
 
 
 def _read_only_shell(code: str) -> bool:
-    """True for a shell command that only reads (ls, cat, grep, find, ...) and writes nowhere."""
+    """True for a shell command that only reads (ls, cat, grep, find, ...) and writes nowhere.
+
+    Only each segment's first word is read, by a plain whitespace split: no shlex, so a
+    multi-megabyte command costs a few regex passes. A command word that is quoted, escaped or
+    prefixed (`'rm'`, `\\rm`, `X=1 cat`) is not a known reader, so it falls back to the write check.
+    """
     text = _HARMLESS_REDIRECT.sub(" ", code)
     if _NOT_READ_ONLY.search(text):
         return False
-    segments = [s.strip() for s in _READ_SPLIT.split(text)]
-    if not any(segments):
-        return False
-    for seg in segments:
-        if not seg:
+    seen = False
+    for seg in _READ_SPLIT.split(text):
+        first = seg.split(None, 1)
+        if not first:
             continue
-        try:
-            words = shlex.split(seg, posix=True)
-        except ValueError:
-            return False
-        if not words:
-            continue
-        cmd = re.split(r"[/\\]", words[0])[-1].lower()
+        seen = True
+        cmd = re.split(r"[/\\]", first[0])[-1].lower()
         if cmd.endswith(".exe"):
             cmd = cmd[:-4]
         if cmd not in _READERS:
             return False
-    return True
+    return seen
 
 
 # ------------------------------------------------------------------ decision

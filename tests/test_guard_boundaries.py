@@ -133,3 +133,16 @@ def test_write_tool_path_check_respects_folder_boundaries(home):
     meta = str(home / ".cache" / "scamgate" / "meta.json")
     assert decision(claude("Write", {"file_path": log, "content": "ok"})) == "silent"
     assert decision(claude("Write", {"file_path": meta, "content": "{}"})) == "deny"
+
+
+@pytest.mark.parametrize("cmd", [
+    "ls ~/.cache/scamgate " + "QUJD" * 250_000 + " 2>/dev/null",           # read-only path, 1 MB word
+    "cat ~/.cache/scamgate/meta.json '" + "a" * 1_000_000 + "' > /tmp/x",   # write check, quoted 1 MB
+    "python -c \"from scamgate import feeds; feeds.update_feeds(fetch=" + "FEEDS[" * 50_000 + ")\"",
+], ids=["read-only-1mb", "quoted-write-1mb", "feed-call-300kb"])  # short ids: Windows caps env vars at 32 KB
+def test_tamper_checks_stay_linear_on_huge_commands(home, cmd):
+    import time
+
+    t = time.perf_counter()
+    hook._tamper_reason("Bash", {"command": cmd})
+    assert time.perf_counter() - t < 3.0
