@@ -29,6 +29,10 @@ MAX_SECONDS_400K = 5.0
 # A quoted local install of 400k characters measures 0.53 s here; reading the words first makes it
 # 3.3 s, so the line sits between the two with room on both sides.
 MAX_SECONDS_LOCAL_INSTALL = 2.0
+# A quote near the end of a 2,000,000-character segment (the cap is 2 MiB) used to hand the whole
+# segment to shlex: 274 s here. The rest of extract already spends a few seconds on that many
+# characters, so this bounds the reader.
+MAX_SECONDS_2MB = 10.0
 MAX_RATIO = 8.0
 SRC = Path(__file__).resolve().parents[1] / "src"
 
@@ -44,6 +48,7 @@ body = {{
     "dotted": lambda k: "curl example.com " + "a." * (k // 2),
     "base64": lambda k: "curl example.com " + "QUJD" * (k // 4),
     "local_quoted": lambda k: "cargo fetch " + "a" * k + " 'x'",
+    "quoted": lambda k: "curl example.com " + "a" * k + " 'x'",
 }}[shape]
 out = []
 for k in sizes:
@@ -84,6 +89,17 @@ def test_local_install_is_answered_without_reading_the_words():
     assert result["opaque"] is False
     assert result["seconds"] < MAX_SECONDS_LOCAL_INSTALL, (
         f"a 400k quoted local install took {result['seconds']:.1f}s")
+
+
+def test_quoted_segment_at_the_input_cap_is_not_slow():
+    """A quote in a 2,000,000-character segment (the cap is 2 MiB) must not cost minutes.
+
+    shlex alone took 274 s here.
+    """
+    result = timed_hook("quoted", [2_000_000])[0]
+    assert result["opaque"] is False
+    assert result["seconds"] < MAX_SECONDS_2MB, (
+        f"a 2,000,000-character quoted segment took {result['seconds']:.1f}s")
 
 
 OLD_CALL = re.compile(r"[A-Za-z_][\w.]*\(")
