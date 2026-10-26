@@ -1,6 +1,8 @@
-![scamgate](docs/assets/scamgate-banner.jpg)
+![scamgate](https://raw.githubusercontent.com/odaiameera/scamgate/main/docs/assets/scamgate-banner.jpg)
 
 # scamgate
+
+<!-- mcp-name: io.github.odaiameera/scamgate -->
 
 <p align="center">
   <a href="https://github.com/odaiameera/scamgate/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/odaiameera/scamgate/actions/workflows/ci.yml/badge.svg?branch=main"></a>
@@ -53,10 +55,13 @@ cd scamgate
 uv sync
 uv run scamgate update-feeds      # download the known-bad-link feeds into ~/.cache/scamgate
 
-# or with pip, pinned to a release
-pip install "git+https://github.com/odaiameera/scamgate.git@v0.3.2"
+# or from PyPI, pinned to a release
+uv tool install scamgate==0.3.3   # or: pip install scamgate==0.3.3
 scamgate update-feeds
 ```
+
+Using Claude Code? Install the [Claude Code plugin](#claude-code-plugin) instead: it brings the hook,
+the MCP tools and the feed refresh in one step.
 
 Check a link (real output):
 
@@ -101,7 +106,24 @@ plus `hook`, `review`, `promote` and `record-payment` (see [Enforce it with a ho
 
 ## Add it to your agent
 
-Replace `/path/to/scamgate` with your checkout.
+### Claude Code plugin
+
+The easiest way for Claude Code. One install adds the enforcing hook, the `check_url`, `check_payment` and
+`update_feeds` tools, and a refresh of the phishing lists every 6 hours. It runs scamgate from PyPI with
+`uvx scamgate==0.3.3`, so it needs [uv](https://docs.astral.sh/uv/), and Claude Code v2.1.295 or later so
+that a hook that can't start blocks instead of letting calls through.
+
+```text
+/plugin install scamgate --marketplace odaiameera/scamgate
+```
+
+On Claude Code before 2.1.275, run `/plugin marketplace add odaiameera/scamgate`, then
+`/plugin install scamgate@scamgate`. What the plugin runs, downloads and stores:
+[claude-plugin/README.md](claude-plugin/README.md).
+
+### MCP server only
+
+Replace `/path/to/scamgate` with your checkout, or run the PyPI release with `uvx scamgate==0.3.3 serve`.
 
 **Claude Desktop** (`claude_desktop_config.json`):
 
@@ -139,6 +161,8 @@ payment. On `ask`, stop and show me the reasons. On `deny`, don't proceed."*
 ```text
 check_url(url: str, intent: str | None = None) -> Verdict
 
+update_feeds() -> {updated, failed, not_configured, skipped, summary}
+
 check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
               method: "card" | "bank_transfer" | "crypto" | "gift_card" | "other",
               context_text: str | None = None, is_new_payee: bool | None = None,
@@ -148,8 +172,9 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
 
 `Verdict` = `decision`, `risk_score`, `reasons[]` (`rule_id`, `explanation`, `weight`),
 `summary`, `checked_host` (for links: the host a browser would open), `warnings[]`, `advisory`.
-Both tools are marked read-only and publish this as their output schema, so MCP clients get it as
-structured content.
+Both check tools are marked read-only and publish this as their output schema, so MCP clients get it as
+structured content. `update_feeds` takes no arguments: it downloads the default lists from their fixed
+sources, at most once an hour, so an agent can ask for a refresh but can't choose what lands in the cache.
 
 ## Enforce it with a hook
 
@@ -245,6 +270,8 @@ update` and `hermes scamgate update-feeds | feeds-status`. It keeps the phishing
 see [In the Hermes plugin](#in-the-hermes-plugin). A plugin install has no `scamgate` command on
 `PATH`; use `/scamgate` or `hermes scamgate` instead.
 
+The [Claude Code plugin](#claude-code-plugin) sets this up for you. To wire it by hand instead:
+
 **Claude Code** (`.claude/settings.json`). Needs Claude Code **v2.1.295+** for `onFailure`.
 Without it, a hook that crashes, times out or can't start lets the tool call through:
 
@@ -261,7 +288,7 @@ Without it, a hook that crashes, times out or can't start lets the tool call thr
 Use the absolute path (`uv tool dir --bin` shows it) so nothing earlier on `PATH` can stand in for
 the hook.
 
-Install a pinned copy for the hook (`uv tool install git+https://github.com/odaiameera/scamgate@v0.3.2`, or a commit hash)
+Install a pinned copy for the hook (`uv tool install scamgate==0.3.3`, or `git+https://github.com/odaiameera/scamgate@v0.3.3`)
 rather than running from a source checkout: an installed copy checks its own files against the
 hashes recorded at install time on every call, and blocks everything if they changed. A source
 checkout has nothing to check against.
@@ -326,7 +353,8 @@ from IANA's RDAP bootstrap list, cached in the feed cache dir.
 
 ## Known-bad-link feeds
 
-Only a feed refresh touches the network: `scamgate update-feeds`, or in the Hermes plugin
+Only a feed refresh touches the network: `scamgate update-feeds`, the MCP `update_feeds` tool,
+`scamgate serve` started with `SCAMGATE_AUTO_UPDATE=1`, or in the Hermes plugin
 `/scamgate update`, `hermes scamgate update-feeds`, the `scamgate_update_feeds` tool and the background
 refresh. They all use the same downloader. Checks read a local cache. No feed data is bundled in this repo.
 
@@ -355,7 +383,9 @@ disabled) and Google Safe Browsing / Web Risk (non-commercial only, or paid).
 Matching: an exact listed URL scores 100, an exact listed host 75, and a subdomain of a listed
 domain (domain feeds only) 50.
 
-For the CLI or the MCP server, refresh with cron, for example every 6 hours:
+A long-running `scamgate serve` can refresh by itself: start it with `SCAMGATE_AUTO_UPDATE=1` (the Claude
+Code plugin does this unless you turn `auto_update_feeds` off). It downloads only when the lists are 6
+hours old. Otherwise, refresh with cron, for example every 6 hours:
 
 ```cron
 0 */6 * * * cd /path/to/scamgate && uv run scamgate update-feeds >> ~/.cache/scamgate/update.log 2>&1
@@ -417,7 +447,7 @@ Exact decision match: 24/24
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (955 at v0.3.2; CI runs them on Python 3.11–3.13). They use fixtures and never touch the network.
+runs the unit tests (1012 at v0.3.3; CI runs them on Python 3.11–3.13). They use fixtures and never touch the network.
 
 ## Limits
 
@@ -442,13 +472,15 @@ runs the unit tests (955 at v0.3.2; CI runs them on Python 3.11–3.13). They us
 - Payee history only knows payees you've recorded with `record-payment`. scamgate doesn't
   verify IBANs or call your bank.
 - Tamper protection stops an agent's normal tools: writes to scamgate, its state and feed
-  cache, its virtualenv (a new `.pth` file fails the integrity check), `~/.claude` and project
+  cache, its virtualenv (a new `.pth` file fails the integrity check), `~/.claude` (settings, hooks and
+  installed plugins) and project
   `.claude/settings*.json`, and the Hermes config, however the path is spelled (`~`, `$HOME`,
   globs, `cd` + relative, `./`, `//`, `..`). A path only counts when it names the folder itself:
   `~/.cache/scamgate-feeds.log` is not inside `~/.cache/scamgate`. Commands that only read
   (`ls`, `cat`, `head`, `tail`, `grep`, `rg`, `find`, `stat`, `which`, `wc`, `du`, `sha256sum`) pass
   on protected paths as long as they have no redirect other than to `/dev/null`, no `$(…)` or
-  backticks, and no `-exec`, `-delete`, `-fprint` or `--pre`. It isn't a sandbox: code running as you can read the signing key and
+  backticks, and no `-exec`, `-delete`, `-fprint` or `--pre`. Agent commands that disable or remove a Claude
+  Code plugin, or start Claude in bare mode (which skips every hook), are blocked too. It isn't a sandbox: code running as you can read the signing key and
   rewrite any file, and code can be written to slip past pattern matching. For the strongest
   setup, give the agent no direct shell access, install scamgate where the agent's user can't
   write (`uv tool install` as another user, or read-only), and for Claude Code put the hook in

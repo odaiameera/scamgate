@@ -64,10 +64,10 @@
       <h2><span class="num">01</span>Quickstart</h2>
       <p>Requires Python 3.11+. Installing with <code>uv tool</code> gives you two commands:
         <code>scamgate</code> and <code>scamgate-hook</code>.</p>
-<pre class="code" data-lang="shell"><code>uv tool install git+https://github.com/odaiameera/scamgate@v0.3.2
+<pre class="code" data-lang="shell"><code>uv tool install scamgate==0.3.3
 scamgate update-feeds        <span class="c"># download known-bad-link feeds (the only command that goes online)</span>
 scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pre>
-      <p>Or with pip: <code>pip install "git+https://github.com/odaiameera/scamgate.git@v0.3.2"</code>. To hack on it,
+      <p>Or with pip: <code>pip install scamgate==0.3.3</code>. To hack on it,
         clone the repo and run <code>uv sync</code>, then prefix commands with <code>uv run</code>.</p>
       <p>The verdict is JSON: a <code>decision</code>, a <code>risk_score</code>, every <code>reason</code> with its
         points, a one-line <code>summary</code>, any <code>warnings</code> (for example, no feeds cached yet) and an
@@ -145,7 +145,15 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
   <span class="k">scamgate:</span>
     <span class="k">command:</span> <span class="s">"scamgate"</span>
     <span class="k">args:</span> [<span class="s">"serve"</span>]</code></pre>
-      <h3>Claude Code</h3>
+      <h3 id="claude-code-plugin">Claude Code plugin</h3>
+      <p>One install adds the enforcing hook, the three tools and a refresh of the phishing lists every 6 hours.
+        It runs <code>uvx scamgate==0.3.3</code> from PyPI, so it needs <a href="https://docs.astral.sh/uv/">uv</a>,
+        and Claude Code v2.1.295 or later so a hook that can't start blocks.</p>
+<pre class="code" data-lang="text"><code>/plugin install scamgate --marketplace odaiameera/scamgate</code></pre>
+      <p>Before Claude Code 2.1.275: <code>/plugin marketplace add odaiameera/scamgate</code>, then
+        <code>/plugin install scamgate@scamgate</code>. What it runs, downloads and stores:
+        <a href="https://github.com/odaiameera/scamgate/blob/main/claude-plugin/README.md">claude-plugin/README.md</a>.</p>
+      <h3>Claude Code, MCP server only</h3>
 <pre class="code" data-lang="shell"><code>claude mcp add scamgate -- scamgate serve</code></pre>
       <h3>Claude Desktop</h3>
 <pre class="code" data-lang="json"><code>{
@@ -236,7 +244,7 @@ hermes plugins enable scamgate</code></pre>
                    <span class="k">"hooks"</span>: [{<span class="k">"type"</span>: <span class="s">"command"</span>, <span class="k">"command"</span>: <span class="s">"/absolute/path/to/scamgate-hook"</span>}]}]
 }}</code></pre>
       <p>Use the absolute path (<code>uv tool dir --bin</code> shows it) so nothing earlier on <code>PATH</code> can stand in for the hook.</p>
-      <div class="note"><b>Install a pinned copy</b>Run the hook from <code>uv tool install git+https://github.com/odaiameera/scamgate@v0.3.2</code>,
+      <div class="note"><b>Install a pinned copy</b>Run the hook from <code>uv tool install scamgate==0.3.3</code>,
         not a source checkout. An installed copy checks its own files against the hashes recorded at install time on
         every call, and blocks everything if they changed. A source checkout has nothing to check against.</div>
       <p>Each gated call costs one process start, about 0.7 s on Windows. Calls that don't touch the network or
@@ -368,6 +376,8 @@ scamgate promote --host shop.example --decision allow --rule url.userinfo</code>
       <h2><span class="num">12</span>MCP tools</h2>
 <pre class="code" data-lang="text"><code>check_url(url: str, intent: str | None = None) -&gt; Verdict
 
+update_feeds() -&gt; {updated, failed, not_configured, skipped, summary}
+
 check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
               method: "card" | "bank_transfer" | "crypto" | "gift_card" | "other",
               context_text: str | None = None, is_new_payee: bool | None = None,
@@ -376,7 +386,9 @@ check_payment(payee_name: str, payee_account: str, amount: float, currency: str,
       <p><code>Verdict</code> = <code>decision</code>, <code>risk_score</code>, <code>reasons[]</code>
         (<code>rule_id</code>, <code>explanation</code>, <code>weight</code>), <code>summary</code>,
         <code>checked_host</code> (for links: the host a browser would open), <code>warnings[]</code>,
-        <code>advisory</code>. Both tools are marked read-only and publish this as their output schema.</p>
+        <code>advisory</code>. Both check tools are marked read-only and publish this as their output schema.
+        <code>update_feeds</code> takes no arguments: it downloads the default lists from their fixed sources, at
+        most once an hour, so an agent can ask for a refresh but can't choose what lands in the cache.</p>
     </section>
 
     <section id="limits">

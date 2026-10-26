@@ -176,7 +176,12 @@ def protected_roots() -> list[str]:
         h = Path(home)
         roots += [str(h / "config.yaml"), str(h / "shell-hooks-allowlist.json"), str(h / "agent-hooks"),
                   str(h / "hooks"), str(h / "plugins")]
-    roots += [str(Path.home() / ".claude" / "settings.json"), str(Path.home() / ".claude" / "hooks")]
+    # Claude Code: settings, hooks, and installed plugins (the scamgate plugin's own hooks.json lives there).
+    claude_dirs = [Path.home() / ".claude"]
+    if env := os.environ.get("CLAUDE_CONFIG_DIR"):
+        claude_dirs.append(Path(env))
+    for c in claude_dirs:
+        roots += [str(c / "settings.json"), str(c / "settings.local.json"), str(c / "hooks"), str(c / "plugins")]
     if env := os.environ.get("SCAMGATE_PROTECT"):
         roots += [p for p in env.split(os.pathsep) if p.strip()]
     return [_norm_path(r) for r in roots if r]
@@ -193,13 +198,14 @@ def _is_protected(path: str, roots: list[str]) -> str | None:
 # Path endings that are always protected, however the path is spelled (~, $HOME, globs, cd + relative).
 _PROTECTED_TAILS = (
     (".claude/settings.json", ".claude/settings"), (".claude/settings.local.json", ".claude/settings"),
-    (".claude/hooks", ".claude/hooks"), (".hermes/config.yaml", ".hermes/config"),
+    (".claude/hooks", ".claude/hooks"), (".claude/plugins", ".claude/plugins"),
+    (".hermes/config.yaml", ".hermes/config"),
     ("hermes/config.yaml", "hermes/config"), ("shell-hooks-allowlist.json", "shell-hooks-allowlist"),
     ("hermes/agent-hooks", "hermes/agent-hooks"), ("hermes/plugins", "hermes/plugins"),
     ("hermes/profiles", "hermes/profiles"), (".hermes/profiles", ".hermes/profiles"),
 )
 _TAIL_RE = re.compile(r"""(?ix)
-    (?:\.claude|\.cl\*|\.c\*)[/\\]+(?:settings[\w.*]*|sett\*[\w.*]*|hooks)\b
+    (?:\.claude|\.cl\*|\.c\*)[/\\]+(?:settings[\w.*]*|sett\*[\w.*]*|hooks|plugins)\b
   | \bhermes[/\\]+(?:config\.ya?ml|agent-hooks|plugins|hooks|profiles)\b
   | \.hermes[/\\]+profiles\b
   | shell-hooks-allowlist

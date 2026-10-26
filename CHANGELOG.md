@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-26
+
+scamgate as a Claude Code plugin, and on PyPI. One install in Claude Code brings the enforcing hook, the
+link and payment check tools, and a refresh of the phishing lists. The plugin runs scamgate from PyPI with
+`uvx scamgate==0.3.3`, pinned to one version.
+
+### Claude Code plugin
+- New `claude-plugin/` with a `SessionStart`, `PreToolUse` (fails closed), `PostToolUse` and
+  `PostToolUseFailure` hook and the MCP server, and a marketplace in `.claude-plugin/marketplace.json`:
+  `/plugin install scamgate --marketplace odaiameera/scamgate`. Settings: `auto_update_feeds` (on) and an
+  optional URLhaus key, kept in the system's credential store. `claude-plugin/README.md` lists what it
+  runs, downloads and stores.
+- Tested in Claude Code 2.1.310: the hook blocked a listed host before `curl` ran, `echo` ran without a
+  prompt, `check_url` and `update_feeds` worked, and lists 8 hours old refreshed during the session.
+- `scamgate hook` goes straight to the hook without loading the command line (about 0.8 s per checked
+  tool call on a Windows PC, with `uvx` adding almost nothing).
+
+### MCP server
+- New `update_feeds` tool, the same no-argument refresh as the Hermes plugin's: default lists from fixed
+  sources, at most once an hour.
+- `scamgate serve` started with `SCAMGATE_AUTO_UPDATE=1` refreshes the lists by itself when they are 6
+  hours old. It stays off unless set, so a hand-configured server downloads nothing unasked.
+- An unset or unfilled URLhaus key (empty, or a `${...}` placeholder) now means "no key" instead of a
+  download address with the placeholder in it.
+
+### Tamper guard
+- Protects what a Claude Code install adds: `~/.claude/plugins` (the installed plugin's own hooks), project
+  and user `settings.local.json`, and the same files under `CLAUDE_CONFIG_DIR`. Reading them stays quiet.
+- Blocks agent commands that disable or remove a Claude Code plugin or its marketplace, or start Claude in
+  bare mode (which skips every hook), and asks before an agent installs, enables or configures a plugin or
+  starts Claude with other settings sources.
+- The plugin's own check tools (`mcp__plugin_scamgate_scamgate__check_url`, `..._check_payment`) may name a
+  listed link, like the other spellings of scamgate's tools.
+
+### Packaging
+- Published to PyPI as `scamgate`, from a GitHub Actions workflow with trusted publishing; the release
+  workflow also attaches the same wheel and sdist with `SHA256SUMS.txt`, and lists the server in the MCP
+  Registry as `io.github.odaiameera/scamgate` (`server.json`).
+- Project URLs, keywords and classifiers in `pyproject.toml`. Install commands use `scamgate==0.3.3`.
+- New CI job: `claude plugin validate` on the plugin and the marketplace, and the plugin's hook and server
+  commands run from the built wheel (`scripts/claude_plugin_smoke.py`).
+
 ### Docs
 - README banner and badge row, notes on #21, #22 and #24, and thanks to @simin-yuan (#25).
 - New `CONTRIBUTING.md` and `SECURITY.md`.

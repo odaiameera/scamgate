@@ -1,11 +1,11 @@
-"""MCP server (stdio) exposing check_url and check_payment."""
+"""MCP server (stdio) exposing check_url, check_payment and update_feeds."""
 
 from __future__ import annotations
 
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from . import domainage, tools
+from . import domainage, refresh, tools
 from .models import Verdict
 
 mcp = MCPServer(
@@ -13,6 +13,7 @@ mcp = MCPServer(
     instructions=(
         "Call check_url before opening any link and check_payment before making any payment. "
         "If the decision is 'ask', stop and show the reasons to the human. If 'deny', do not proceed. "
+        "If a verdict warns that the phishing lists are missing or stale, call update_feeds. "
         "Results are advisory, not a guarantee."
     ),
 )
@@ -50,7 +51,23 @@ def check_payment(
     ))
 
 
+@mcp.tool(description=tools.UPDATE_DESCRIPTION,
+          annotations=ToolAnnotations(title="Refresh the phishing lists", read_only_hint=False,
+                                      destructive_hint=False, idempotent_hint=True, open_world_hint=True))
+def update_feeds() -> tools.UpdateResult:
+    """No parameters on purpose: an agent can ask for a refresh, not choose what is downloaded."""
+    return tools.update_feeds()
+
+
+SERVER_FIRST_REFRESH_DELAY = 10.0  # seconds after start; a pass downloads only when the lists are 6 hours old
+SERVER_REFRESH_EVERY = 30 * 60.0
+
+
 def run() -> None:
+    # Opt-in for the server: an MCP server someone configured by hand keeps today's behaviour (no downloads
+    # unless asked). The Claude Code plugin turns it on through its auto_update_feeds setting.
+    if refresh.env_flag("SCAMGATE_AUTO_UPDATE", default=False):
+        refresh.start_background(first_delay=SERVER_FIRST_REFRESH_DELAY, every=SERVER_REFRESH_EVERY)
     mcp.run(transport="stdio")
 
 

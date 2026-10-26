@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.odaiameera/scamgate",
+  "title": "scamgate",
+  "description": "Offline scam check for agents: verify links and payments before acting (allow, ask or deny).",
+  "websiteUrl": "https://odaiameera.github.io/scamgate/",
+  "repository": {
+    "url": "https://github.com/odaiameera/scamgate",
+    "source": "github"
+  },
+  "version": "0.3.3",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "scamgate",
+      "version": "0.3.3",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "serve"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "SCAMGATE_AUTO_UPDATE",
+          "description": "Set to 1 to refresh the phishing lists every 6 hours while the server runs (off by default).",
+          "isRequired": false,
+          "format": "string",
+          "default": "0"
+        },
+        {
+          "name": "SCAMGATE_URLHAUS_AUTH_KEY",
+          "description": "Optional abuse.ch Auth-Key that adds the URLhaus malware-link list.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

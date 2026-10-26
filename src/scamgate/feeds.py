@@ -27,7 +27,7 @@ ENV_CACHE_DIR = "SCAMGATE_CACHE_DIR"
 ENV_URLHAUS_KEY = "SCAMGATE_URLHAUS_AUTH_KEY"
 USER_AGENT = "scamgate/0.3 (+https://github.com/odaiameera/scamgate)"
 STALE_AFTER_HOURS = 24
-REFRESH_HINT = ("Refresh them with `scamgate update-feeds`, or with `/scamgate update` "
+REFRESH_HINT = ("Refresh them with the update_feeds tool or `scamgate update-feeds`, or with `/scamgate update` "
                 "(`hermes scamgate update-feeds` in a terminal) when scamgate is a Hermes plugin.")
 
 
@@ -136,8 +136,10 @@ class Feed:
 
 
 def _urlhaus_url() -> str | None:
-    key = os.environ.get(ENV_URLHAUS_KEY)
-    return f"https://urlhaus-api.abuse.ch/v2/files/exports/{key}/csv_online" if key else None
+    key = (os.environ.get(ENV_URLHAUS_KEY) or "").strip()
+    if not key or key.startswith("${"):  # unset, or a plugin setting placeholder nobody filled in
+        return None
+    return f"https://urlhaus-api.abuse.ch/v2/files/exports/{key}/csv_online"
 
 
 FEEDS: dict[str, Feed] = {f.name: f for f in [
