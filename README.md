@@ -471,7 +471,8 @@ bank's fraud controls, Verification of Payee, or human judgement.
 
 Issues and pull requests are welcome, especially new rules, scenarios (scam and legit) and
 false-positive reports. Please include a test or scenario with each rule change, and keep checks
-offline and deterministic. See [`AGENTS.md`](AGENTS.md) for repo conventions.
+offline and deterministic. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before you start, and
+report security bugs privately ([`SECURITY.md`](SECURITY.md)). See [`AGENTS.md`](AGENTS.md) for repo conventions.
 
 Thanks to [@simin-yuan](https://github.com/simin-yuan) for the first outside contributions: the report
 in #20 and the fixes in #21 and #22 that made the hook linear on long commands.

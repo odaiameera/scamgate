@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Docs
+- README banner and badge row, notes on #21, #22 and #24, and thanks to @simin-yuan (#25).
+- New `CONTRIBUTING.md` and `SECURITY.md`.
+
 ## [0.3.2] - 2026-10-26
 
 Feed refreshes that work on a plain Hermes plugin install, fewer false blocks from the tamper guard,
