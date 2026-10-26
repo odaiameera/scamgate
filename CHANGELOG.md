@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Claude Code plugin
+- New icon for the plugin listing: the gate from the README banner, with the shield check and the
+  allow, ask and deny lights on the traffic passing through. 512 x 512 PNG, rendered from
+  `docs/assets/scamgate-icon.svg`.
+
 ## [0.3.3] - 2026-10-26
 
 scamgate as a Claude Code plugin, and on PyPI. One install in Claude Code brings the enforcing hook, the

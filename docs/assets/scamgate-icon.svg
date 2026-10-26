@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- scamgate icon: the gate checks what passes through it (allow / ask / deny). Source for claude-plugin/icon.png. -->
+  <defs>
+    <linearGradient id="sg-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0D1F35"/>
+      <stop offset="1" stop-color="#060E1A"/>
+    </linearGradient>
+    <radialGradient id="sg-halo" cx="0.5" cy="0.56" r="0.5">
+      <stop offset="0" stop-color="#0FB5D6" stop-opacity="0.34"/>
+      <stop offset="0.6" stop-color="#0FB5D6" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#0FB5D6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="sg-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="sg-dot" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="sg-clip"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <g clip-path="url(#sg-clip)">
+    <rect width="512" height="512" fill="url(#sg-bg)"/>
+    <rect width="512" height="512" fill="url(#sg-halo)"/>
+    <!-- circuit traces -->
+    <g stroke="#1F5A78" stroke-width="3" fill="none" opacity="0.5" stroke-linecap="round">
+      <path d="M0 120 H64 L96 152 V196"/>
+      <path d="M512 392 H448 L416 360 V318"/>
+      <path d="M44 512 V456 L76 424 H112"/>
+      <path d="M468 0 V58 L436 90 H398"/>
+    </g>
+    <g fill="#1F5A78" opacity="0.7">
+      <circle cx="96" cy="196" r="7"/><circle cx="416" cy="318" r="7"/><circle cx="112" cy="424" r="7"/><circle cx="398" cy="90" r="7"/>
+    </g>
+    <!-- traffic flowing through the gate -->
+    <path d="M70 344 H442" stroke="#18D7F5" stroke-width="10" stroke-dasharray="24 16" stroke-linecap="round" opacity="0.8"/>
+    <!-- the gate -->
+    <path d="M150 414 V264 A106 106 0 0 1 362 264 V414" fill="none" stroke="#18D7F5" stroke-width="28" stroke-linecap="round" filter="url(#sg-glow)"/>
+    <path d="M150 414 V264 A106 106 0 0 1 362 264 V414" fill="none" stroke="#C4F7FF" stroke-width="7" stroke-linecap="round" opacity="0.9"/>
+    <!-- allow / ask / deny -->
+    <circle cx="208" cy="344" r="20" fill="#22C55E" filter="url(#sg-dot)"/>
+    <circle cx="256" cy="344" r="20" fill="#F59E0B" filter="url(#sg-dot)"/>
+    <circle cx="304" cy="344" r="20" fill="#EF4444" filter="url(#sg-dot)"/>
+    <!-- shield keystone -->
+    <path d="M256 84 L320 109 V158 C320 201 294 228 256 246 C218 228 192 201 192 158 V109 Z" fill="#0A1A2C" stroke="#18D7F5" stroke-width="12" stroke-linejoin="round" filter="url(#sg-glow)"/>
+    <path d="M223 166 L248 191 L291 144" fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
