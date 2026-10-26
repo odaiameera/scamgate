@@ -1,6 +1,16 @@
+![scamgate](docs/assets/scamgate-banner.jpg)
+
 # scamgate
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/odaiameera/scamgate)](https://m8ven.ai/mcp/odaiameera/scamgate?s=readme)
+<p align="center">
+  <a href="https://github.com/odaiameera/scamgate/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/odaiameera/scamgate/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/odaiameera/scamgate/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/odaiameera/scamgate"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="pyproject.toml"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white"></a>
+  <a href="#add-it-to-your-agent"><img alt="MCP server" src="https://img.shields.io/badge/MCP-server-8A2BE2"></a>
+  <a href="https://github.com/odaiameera/scamgate/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/odaiameera/scamgate?style=flat"></a>
+  <a href="https://m8ven.ai/mcp/odaiameera/scamgate?s=readme"><img alt="M8ven Score" src="https://m8ven.ai/badge/mcp/odaiameera/scamgate"></a>
+</p>
 
 A self-hosted scam check for AI agents: verify links and payments before the agent acts.
 
@@ -180,6 +190,9 @@ It speaks Hermes shell hooks and Claude Code `PreToolUse` hooks.
   pre-approve other destinations. Still, pick "once" for asks you don't expect to repeat.
 - **Fails closed:** bad input, input over 2 MB, deep nesting or an internal error blocks the call
   (exit 2).
+- **Stays fast on long commands.** The hook reads a command's words in one linear pass (no
+  `shlex`), so a padded command can't tie it up: a 2,000,000-character quoted command takes about
+  5 s on one Windows machine, down from over 200 s. Decisions are unchanged.
 - **Never says "allow".** Silence means "no objection", so it can only tighten your agent's
   permissions, never loosen them.
 
@@ -224,9 +237,9 @@ Note: with the shell hook, `/yolo` or `approvals.mode: off` auto-approves every 
 (blocks still hold). The Hermes plugin below turns those asks into blocks instead, unless you set
 `plugins.entries.scamgate.settings.when_approvals_off: allow`.
 
-**Hermes plugin** (preferred once it is in the catalog). Same checks as the shell hook, in-process,
-about 50× faster, and it can see a per-chat `/yolo`. Needs Hermes 0.19.1+. Until the catalog entry
-lands, install the `src/scamgate` directory as a plugin. It registers `pre_tool_call`,
+**Hermes plugin** (preferred). Same checks as the shell hook, in-process,
+about 50× faster, and it can see a per-chat `/yolo`. Needs Hermes 0.19.1+. It's in the Hermes plugin
+catalog, or install the `src/scamgate` directory as a plugin. It registers `pre_tool_call`,
 `scamgate_check_url`, `scamgate_check_payment`, `scamgate_update_feeds`, `/scamgate status | review |
 update` and `hermes scamgate update-feeds | feeds-status`. It keeps the phishing lists fresh by itself:
 see [In the Hermes plugin](#in-the-hermes-plugin). A plugin install has no `scamgate` command on
@@ -404,7 +417,7 @@ Exact decision match: 24/24
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (CI runs them on Python 3.11–3.13). They use fixtures and never touch the network.
+runs the unit tests (955 at v0.3.2; CI runs them on Python 3.11–3.13). They use fixtures and never touch the network.
 
 ## Limits
 
@@ -459,6 +472,9 @@ bank's fraud controls, Verification of Payee, or human judgement.
 Issues and pull requests are welcome, especially new rules, scenarios (scam and legit) and
 false-positive reports. Please include a test or scenario with each rule change, and keep checks
 offline and deterministic. See [`AGENTS.md`](AGENTS.md) for repo conventions.
+
+Thanks to [@simin-yuan](https://github.com/simin-yuan) for the first outside contributions: the report
+in #20 and the fixes in #21 and #22 that made the hook linear on long commands.
 
 ## License
 
