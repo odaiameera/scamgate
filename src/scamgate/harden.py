@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
 from pathlib import Path
 
 _SAFETY_BLOCK = re.compile(
@@ -320,9 +319,10 @@ def _resolve(token: str, cwd: str) -> Path:
 
 
 def _script_tokens(segment: str) -> list[str]:
-    try:
-        toks = shlex.split(segment, posix=True)
-    except ValueError:
+    from .hook import _words  # shlex's words in one pass: shlex itself is superlinear on long tokens
+
+    toks = _words(segment)
+    if toks is None:
         return []
     i = 0
     while i < len(toks) and _ENV_ASSIGN.match(toks[i]) and "/" not in toks[i] and "\\" not in toks[i]:

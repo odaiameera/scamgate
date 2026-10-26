@@ -1,10 +1,22 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.2] - 2026-10-26
 
-Feed refreshes that work on a plain Hermes plugin install, and fewer false blocks from the tamper guard.
-Reported from a real install, where `/scamgate update` told people to run a `scamgate update-feeds`
-command a plugin install doesn't have.
+Feed refreshes that work on a plain Hermes plugin install, fewer false blocks from the tamper guard,
+and a hook that stays fast on very long commands (PRs #21, #22, #23 and #24). Install commands are pinned
+to `v0.3.2`. Reported from a real install, where `/scamgate update` told people to run a
+`scamgate update-feeds` command a plugin install doesn't have.
+
+### Speed on long commands (#20)
+- A 100,000-character command kept the hook busy for about 40 s, and the hook accepts up to 2 MiB.
+  The call-looking check is now one linear pass and each segment is split once (#21), and a one-pass
+  reader returns exactly the words `shlex` would (#22), both by @simin-yuan. The script check in
+  `harden.py` now uses the same reader (#24), so the whole hook call, not just `extract()`, is linear:
+  a 2,000,000-character quoted command went from over 200 s to about 5 s on one Windows machine.
+- No decision changed: 11,350 commands (every string in the test suites plus quoting and spacing
+  variants around listed hosts) gave the same decision and message before and after #21 and #22.
+- The tamper guard's read-only check reads only each segment's first word, without `shlex`, and runs
+  only after a write or feed-call pattern matched.
 
 ### Hermes plugin
 - `/scamgate update` now downloads the phishing lists instead of pointing at a missing command, and
@@ -35,6 +47,8 @@ command a plugin install doesn't have.
   block, cache poisoning), `tests/test_plugin_feed_updates.py` and `tests/test_update_feeds_cli.py`.
 - CI runs `update-feeds` and `feeds-status` on sample feed data, and a new `plugin-install` job runs
   `scripts/plugin_smoke.py` in a venv that has only the plugin's dependencies.
+- `tests/test_hook_perf.py` (#21, #22) and `tests/test_hook_perf_full.py` (#24) time the hook in a
+  subprocess with a hard timeout; the second times the whole `hook.run`, not just `extract()`.
 
 ## [0.3.1] - 2026-10-22
 
