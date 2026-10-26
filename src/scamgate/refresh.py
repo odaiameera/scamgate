@@ -12,12 +12,14 @@ processes (gateway, chats, cron jobs) have the plugin loaded.
 
 from __future__ import annotations
 
+import logging
 import os
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterator
+from typing import Callable, Iterator
 
 from . import feeds
 
@@ -25,6 +27,20 @@ AUTO_REFRESH_HOURS = 6.0  # the background refresh downloads again once the list
 TOOL_MIN_GAP_HOURS = 1.0  # the agent tool doesn't download again within this time
 LOCK_NAME = ".update.lock"
 LOCK_STALE_SECONDS = 30 * 60  # a lock older than this was left by a refresh that died
+OFF_VALUES = ("0", "false", "off", "no")
+ON_VALUES = ("1", "true", "on", "yes")
+_log = logging.getLogger("scamgate")
+
+
+def env_flag(name: str, default: bool) -> bool:
+    """A yes/no environment setting. Unset, empty or unrecognised values (such as an unfilled
+    `${user_config.KEY}` placeholder) mean `default`."""
+    value = (os.environ.get(name) or "").strip().lower()
+    if value in OFF_VALUES:
+        return False
+    if value in ON_VALUES:
+        return True
+    return default
 
 
 @dataclass
@@ -126,6 +142,47 @@ def refresh(*, if_older_than_hours: float | None = None) -> Outcome:
 def auto_pass() -> Outcome:
     """One pass of the background refresh: download only when the lists are 6 hours old."""
     return refresh(if_older_than_hours=AUTO_REFRESH_HOURS)
+
+
+# ---------------------------------------------------------------- background refresh thread
+
+_BG_LOCK = threading.Lock()
+_BG: tuple[threading.Thread, threading.Event] | None = None
+
+
+def _background_loop(stop: threading.Event, first_delay: float, every: float) -> None:
+    if stop.wait(first_delay):
+        return
+    while True:
+        try:
+            out = auto_pass()
+            if out.failed:
+                _log.warning("scamgate: background feed refresh failed for %s", ", ".join(out.failed))
+        except Exception:
+            _log.warning("scamgate: background feed refresh failed", exc_info=True)
+        if stop.wait(every):
+            return
+
+
+def start_background(*, first_delay: float, every: float,
+                     on_unload: Callable[[Callable[[], None]], object] | None = None) -> threading.Thread:
+    """One daemon refresh thread per process (the Hermes plugin, or `scamgate serve` with
+    SCAMGATE_AUTO_UPDATE on). Processes share the lock file, so only one downloads at a time."""
+    global _BG
+    with _BG_LOCK:
+        if _BG is not None and _BG[0].is_alive() and not _BG[1].is_set():
+            return _BG[0]
+        stop = threading.Event()
+        thread = threading.Thread(target=_background_loop, args=(stop, first_delay, every),
+                                  name="scamgate-feed-refresh", daemon=True)
+        _BG = (thread, stop)
+        thread.start()
+    if callable(on_unload):
+        try:
+            on_unload(stop.set)
+        except Exception:
+            pass
+    return thread
 
 
 def status() -> tuple[bool, list[str]]:

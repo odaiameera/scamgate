@@ -66,3 +66,26 @@ jobs:
 
       - name: hermes scamgate update-feeds, /scamgate update and the update tool
         run: '"$RUNNER_TEMP/bare/bin/python" scripts/plugin_smoke.py "$RUNNER_TEMP/plugins" tests/fixtures/feeds'
+
+  claude-plugin:
+    name: Claude Code plugin (validate, hook and server from the wheel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.11"
+
+      - name: claude plugin validate (plugin and marketplace)
+        run: |
+          npx -y @anthropic-ai/claude-code@2.1.310 plugin validate ./claude-plugin --strict
+          npx -y @anthropic-ai/claude-code@2.1.310 plugin validate . --strict
+
+      - name: The plugin's hook and serve commands, run from the built wheel through uvx
+        run: |
+          uv build --out-dir "$RUNNER_TEMP/dist"
+          uv run --no-project python scripts/claude_plugin_smoke.py "$RUNNER_TEMP"/dist/scamgate-*-py3-none-any.whl

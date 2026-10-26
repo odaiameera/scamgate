@@ -1,0 +1,40 @@
+{
+  "name": "scamgate",
+  "displayName": "scamgate",
+  "version": "0.3.3",
+  "description": "Offline scam gate for Claude Code: blocks known-bad links and risky payments before a tool runs, and asks you when it can't see where a command is going.",
+  "author": {
+    "name": "Odai Ameera",
+    "url": "https://github.com/odaiameera"
+  },
+  "homepage": "https://odaiameera.github.io/scamgate/",
+  "repository": "https://github.com/odaiameera/scamgate",
+  "license": "MIT",
+  "icon": "./icon.png",
+  "documentationUrl": "https://odaiameera.github.io/scamgate/docs.html#claude-code-plugin",
+  "supportUrl": "https://github.com/odaiameera/scamgate/issues",
+  "privacyPolicyUrl": "https://odaiameera.github.io/scamgate/privacy.html",
+  "keywords": [
+    "security",
+    "phishing",
+    "scam",
+    "payments",
+    "hooks",
+    "mcp"
+  ],
+  "userConfig": {
+    "auto_update_feeds": {
+      "type": "boolean",
+      "title": "Refresh the phishing lists automatically",
+      "description": "Download the phishing lists shortly after a session starts and every 6 hours while Claude Code runs. Turn off to refresh only when Claude calls update_feeds.",
+      "default": true
+    },
+    "urlhaus_auth_key": {
+      "type": "string",
+      "title": "URLhaus Auth-Key (optional)",
+      "description": "Free abuse.ch key that adds the URLhaus malware-link list. Leave empty to skip that list.",
+      "sensitive": true,
+      "default": ""
+    }
+  }
+}

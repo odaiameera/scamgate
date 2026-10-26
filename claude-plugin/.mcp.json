@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "scamgate": {
+      "command": "uvx",
+      "args": ["scamgate==0.3.3", "serve"],
+      "env": {
+        "SCAMGATE_AUTO_UPDATE": "${user_config.auto_update_feeds}",
+        "SCAMGATE_URLHAUS_AUTH_KEY": "${user_config.urlhaus_auth_key}"
+      }
+    }
+  }
+}

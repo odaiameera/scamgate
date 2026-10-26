@@ -1,5 +1,5 @@
 name: scamgate
-version: "0.3.2"
+version: "0.3.3"
 description: "Offline scam gate. Blocks known-bad links and payments before a tool runs, and asks a human when it cannot see the destination."
 author: Odai Ameera
 requires_hermes: ">=0.19.1"

@@ -1,0 +1,53 @@
+{
+  "description": "scamgate checks every tool call before it runs. It runs scamgate from PyPI with uvx, pinned to one version.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx scamgate==0.3.3 hook",
+            "timeout": 180
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx scamgate==0.3.3 hook",
+            "timeout": 60,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx scamgate==0.3.3 hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx scamgate==0.3.3 hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

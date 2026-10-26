@@ -1,0 +1,18 @@
+{
+  "name": "scamgate",
+  "description": "scamgate for Claude Code: a hook that checks every tool call for scam links and risky payments, plus link and payment check tools.",
+  "owner": {
+    "name": "Odai Ameera",
+    "url": "https://github.com/odaiameera"
+  },
+  "plugins": [
+    {
+      "name": "scamgate",
+      "source": "./claude-plugin",
+      "description": "Blocks known-bad links and risky payments before a tool runs, and asks you when it can't see where a command is going.",
+      "version": "0.3.3",
+      "category": "security",
+      "homepage": "https://odaiameera.github.io/scamgate/"
+    }
+  ]
+}

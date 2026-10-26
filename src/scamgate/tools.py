@@ -66,3 +66,29 @@ def check_url(args: UrlArgs) -> Verdict:
 
 def check_payment(args: PaymentArgs) -> Verdict:
     return engine.check_payment(PaymentCheck(**args.model_dump()))
+
+
+UPDATE_DESCRIPTION = (
+    "Refresh scamgate's phishing lists now. Use it when a scamgate verdict or status says the lists are missing "
+    "or stale. Takes no arguments: it always downloads the default lists from their fixed sources, and does "
+    "nothing if they were refreshed in the last hour. With automatic refresh on, the lists also refresh by "
+    "themselves every 6 hours."
+)
+
+
+class UpdateResult(BaseModel):
+    updated: list[str] = Field(description="Lists downloaded now.")
+    failed: dict[str, str] = Field(description="Lists that couldn't be downloaded; their old copy is kept.")
+    not_configured: dict[str, str] = Field(description="Optional lists that need a key first.")
+    skipped: str = Field(description='"fresh" (refreshed in the last hour), "busy" (another refresh is running) '
+                                     'or empty.')
+    summary: str = Field(description="One line per list, for the human.")
+
+
+def update_feeds() -> UpdateResult:
+    """The agent's refresh button: no arguments, default feeds, fixed sources, at most once an hour."""
+    from . import refresh
+
+    out = refresh.refresh(if_older_than_hours=refresh.TOOL_MIN_GAP_HOURS)
+    return UpdateResult(updated=out.updated, failed=out.failed, not_configured=out.not_configured,
+                        skipped=out.skipped, summary=out.text())

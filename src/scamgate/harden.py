@@ -43,8 +43,32 @@ _SAFETY_ASK = re.compile(
 """
 )
 _SECRET = re.compile(r"(?i)state\.key|payees\.salt|\.local[/\\]+state[/\\]+scamgate\b")
-# Exactly scamgate's own tools: Claude Code MCP, Hermes MCP, Hermes plugin. Not any name containing them.
-_OWN_CHECK = re.compile(r"(?i)^(?:mcp__scamgate__|mcp_scamgate_|scamgate_)check_(?:url|payment)$")
+# Claude Code: disabling or removing a plugin (scamgate is one) or its marketplace, and starting a nested
+# claude session that skips hooks (bare mode, or settings with disableAllHooks). The other bypass flags are
+# in _SAFETY_BLOCK.
+_CLAUDE_BIN = r"\bclaude(?:-code)?(?:\.exe|\.cmd)?"
+_CLAUDE_SAFETY_BLOCK = re.compile(
+    rf"""(?ix)
+    {_CLAUDE_BIN}\s+plugins?\s+(?:disable|uninstall|remove|rm)\b
+  | {_CLAUDE_BIN}\s+plugins?\s+marketplace\s+(?:remove|rm)\b
+  | {_CLAUDE_BIN}\b[^\n|;&]{{0,300}}?(?<![A-Za-z0-9_-])--bare\b
+  | {_CLAUDE_BIN}\b[^\n|;&]{{0,300}}?/plugins?\s+(?:disable|uninstall|remove|rm)\b
+  | (?<![A-Za-z0-9_-])--allow-dangerously-skip-permissions\b
+  | disableAllHooks['"\s]*[:=]\s*['"]?true\b
+"""
+)
+# Claude Code: changing which plugins or settings a session loads.
+_CLAUDE_SAFETY_ASK = re.compile(
+    rf"""(?ix)
+    {_CLAUDE_BIN}\s+plugins?\s+(?:install|i|enable|configure)\b
+  | {_CLAUDE_BIN}\b[^\n|;&]{{0,300}}?(?<![A-Za-z0-9_-])--setting-sources\b
+  | {_CLAUDE_BIN}\b[^\n|;&]{{0,300}}?(?<![A-Za-z0-9_-])--settings\b
+"""
+)
+# Exactly scamgate's own tools: Claude Code MCP, Claude Code plugin MCP, Hermes MCP, Hermes plugin. Not any
+# name containing them.
+_OWN_CHECK = re.compile(
+    r"(?i)^(?:mcp__scamgate__|mcp__plugin_scamgate_scamgate__|mcp_scamgate_|scamgate_)check_(?:url|payment)$")
 _SCRIPT_EXT = re.compile(r"(?i)\.(?:sh|bash|py|js|mjs|cjs|ps1|bat|cmd)$")
 _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _RUNNABLE = re.compile(
@@ -86,9 +110,9 @@ def gate_extra(tool: str, tool_input: dict):
         blob = "\n".join(_strings(tool_input))
         if _SECRET.search(blob) or _mentions_state_dir(blob):
             take(_block("it would read scamgate's signing key or payee history"))
-        if m := _SAFETY_BLOCK.search(blob):
+        if m := _SAFETY_BLOCK.search(blob) or _CLAUDE_SAFETY_BLOCK.search(blob):
             take(_block(f"it would switch a safety control off ('{m.group(0).strip()[:80]}')"))
-        elif m := _SAFETY_ASK.search(blob):
+        elif m := _SAFETY_ASK.search(blob) or _CLAUDE_SAFETY_ASK.search(blob):
             take(_ask(f"it changes which agent or plugins are in force ('{m.group(0).strip()[:80]}'). "
                       "Approve only if you meant to install or switch."))
         if t in {"write_file", "patch", "write", "edit", "multiedit", "notebookedit", "str_replace_editor"}:
