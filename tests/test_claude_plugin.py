@@ -9,6 +9,7 @@ switch a plugin or every hook off.
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 import tomllib
@@ -93,7 +94,11 @@ def test_registry_name_matches_the_readme_marker():
 def test_directory_listing_fields_point_at_real_things():
     m = load("claude-plugin/.claude-plugin/plugin.json")
     icon = PLUGIN / m["icon"]
-    assert m["icon"].startswith("./") and icon.is_file() and icon.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    data = icon.read_bytes()
+    assert m["icon"].startswith("./") and data[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height = struct.unpack(">II", data[16:24])
+    assert width == height >= 256  # square, sharp enough for a listing
+    assert (ROOT / "docs" / "assets" / "scamgate-icon.svg").is_file()  # its source
     for key in ("documentationUrl", "supportUrl", "privacyPolicyUrl"):
         assert m[key].startswith("https://"), key
     assert m["privacyPolicyUrl"].endswith("/privacy.html") and (ROOT / "site" / "privacy.html").is_file()
