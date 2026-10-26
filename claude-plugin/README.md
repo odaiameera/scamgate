@@ -14,6 +14,9 @@ sent anywhere.
 - Claude Code v2.1.295 or later. From that version a hook that can't start blocks the tool call instead of
   letting it through. On older versions a broken hook (for example, `uvx` missing) lets calls through.
 
+scamgate runs where Claude Code runs commands on your machine. Added from claude.ai or Cowork, the plugin
+loads in your Claude Code sessions through account sync.
+
 ## Install
 
 ```text
@@ -79,4 +82,5 @@ sometimes flag legitimate actions. The hook sees a tool call's arguments, not wh
 runs. It stops an agent's normal tools; it is not a sandbox against code already running as you. Each checked
 tool call starts one short process: about 0.8 seconds on a Windows PC with the full phishing lists loaded.
 
-Source, full documentation and the rule list: <https://github.com/odaiameera/scamgate>. License: MIT.
+Source, full documentation and the rule list: <https://github.com/odaiameera/scamgate>. Privacy:
+<https://odaiameera.github.io/scamgate/privacy.html>. License: MIT.

@@ -10,7 +10,18 @@
   "homepage": "https://odaiameera.github.io/scamgate/",
   "repository": "https://github.com/odaiameera/scamgate",
   "license": "MIT",
-  "keywords": ["security", "phishing", "scam", "payments", "hooks", "mcp"],
+  "icon": "./icon.png",
+  "documentationUrl": "https://odaiameera.github.io/scamgate/docs.html#claude-code-plugin",
+  "supportUrl": "https://github.com/odaiameera/scamgate/issues",
+  "privacyPolicyUrl": "https://odaiameera.github.io/scamgate/privacy.html",
+  "keywords": [
+    "security",
+    "phishing",
+    "scam",
+    "payments",
+    "hooks",
+    "mcp"
+  ],
   "userConfig": {
     "auto_update_feeds": {
       "type": "boolean",

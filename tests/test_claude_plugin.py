@@ -90,6 +90,17 @@ def test_registry_name_matches_the_readme_marker():
     assert "<!-- mcp-name: io.github.odaiameera/scamgate -->" in (ROOT / "README.md").read_text(encoding="utf-8")
 
 
+def test_directory_listing_fields_point_at_real_things():
+    m = load("claude-plugin/.claude-plugin/plugin.json")
+    icon = PLUGIN / m["icon"]
+    assert m["icon"].startswith("./") and icon.is_file() and icon.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    for key in ("documentationUrl", "supportUrl", "privacyPolicyUrl"):
+        assert m[key].startswith("https://"), key
+    assert m["privacyPolicyUrl"].endswith("/privacy.html") and (ROOT / "site" / "privacy.html").is_file()
+    assert m["documentationUrl"].endswith("#claude-code-plugin")
+    assert 'id="claude-code-plugin"' in (ROOT / "site" / "docs.html").read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize("rel", ["claude-plugin/README.md", "README.md", "site/index.html", "site/docs.html"])
 def test_docs_pin_this_release(rel):
     pins = set(re.findall(r"scamgate==(\d+\.\d+\.\d+)", (ROOT / rel).read_text(encoding="utf-8")))

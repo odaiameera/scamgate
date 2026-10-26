@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · scamgate</title>
+<meta name="description" content="What scamgate downloads, sends and stores: no accounts, no telemetry, and nothing about the links or payments you check leaves your machine.">
+<meta name="theme-color" content="#0b0c0a">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/IBMPlexSans-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="mark" href="./" aria-label="scamgate home">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M8 26V9M24 26V9" stroke="#ece8dc" stroke-width="2.4" stroke-linecap="round"/><path d="M5 15h22" stroke="#f0b44c" stroke-width="4" stroke-linecap="round"/><path d="M10 15l2.5-3M15 15l2.5-3M20 15l2.5-3" stroke="#0b0c0a" stroke-width="1.6"/></svg>
+      scamgate
+    </a>
+    <nav aria-label="Main">
+      <a href="./#try">Try it</a>
+      <a href="./#enforce">Enforcement</a>
+      <a href="docs.html">Docs</a>
+      <a class="gh" href="https://github.com/odaiameera/scamgate">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap docs">
+  <nav class="toc" aria-label="On this page">
+    <p>Privacy</p>
+    <a href="#short">In short</a>
+    <a href="#downloads">Downloads</a>
+    <a href="#sends">What it sends</a>
+    <a href="#stores">What it stores</a>
+    <a href="#site">This website</a>
+    <a href="#contact">Contact</a>
+  </nav>
+
+  <main class="doc" id="main">
+    <header>
+      <p class="eyebrow"><b>Privacy</b> · scamgate</p>
+      <h1>Privacy</h1>
+      <p>This covers scamgate in every form: the command line, the MCP server, the hook, the Hermes plugin and
+        the Claude Code plugin. Last updated 26 October 2026.</p>
+    </header>
+
+    <section id="short">
+      <h2><span class="num">01</span>In short</h2>
+      <p>scamgate runs on your machine. It has no accounts, no telemetry and no server of its own. Nothing about
+        the links you check, the payments you check or the commands your agent runs is sent anywhere. The
+        author receives no data from it.</p>
+    </section>
+
+    <section id="downloads">
+      <h2><span class="num">02</span>Downloads</h2>
+      <p>To refresh its phishing lists, scamgate downloads whole lists. A download carries nothing about what
+        you check.</p>
+      <ul>
+        <li>The <a href="https://openphish.com/feed.txt">OpenPhish community feed</a>, from openphish.com.</li>
+        <li>The <a href="https://github.com/Phishing-Database/Phishing.Database">Phishing.Database</a>
+          active-domains list, from raw.githubusercontent.com.</li>
+        <li>The abuse.ch URLhaus list, only if you give scamgate a URLhaus key.</li>
+        <li>The Phishing.Database active-links list, only if you ask for it with
+          <code>scamgate update-feeds --all</code>.</li>
+      </ul>
+      <p>The lists download when you run <code>scamgate update-feeds</code>, when your agent calls the
+        <code>update_feeds</code> tool, and on the automatic refresh, which the Hermes and Claude Code plugins
+        run every 6 hours unless you turn it off. Each provider sees an ordinary download request from your
+        IP address, under its own terms.</p>
+    </section>
+
+    <section id="sends">
+      <h2><span class="num">03</span>What it sends</h2>
+      <ul>
+        <li><b>Your URLhaus key</b>, if you set one, goes only to urlhaus-api.abuse.ch, as part of that list's
+          download address. The Claude Code plugin keeps it in your system's secure credential store.</li>
+        <li><b>Domain-age lookups</b> are off unless you set <code>SCAMGATE_RDAP=live</code> or run
+          <code>scamgate domain-age</code> yourself. Then scamgate asks the domain's public registry (RDAP)
+          when an unknown domain was registered, which tells that registry which domain you checked. The
+          answers are cached on your machine. The Claude Code plugin never turns this on.</li>
+      </ul>
+      <p>Nothing else leaves your machine.</p>
+    </section>
+
+    <section id="stores">
+      <h2><span class="num">04</span>What it stores</h2>
+      <p>Everything stays on your machine, in two folders you can delete at any time:</p>
+      <ul>
+        <li><b>The phishing lists</b>, in a <code>scamgate</code> folder in your cache folder
+          (<code>$XDG_CACHE_HOME</code>, by default <code>~/.cache</code>).</li>
+        <li><b>A private state folder</b>, <code>scamgate</code> in your state folder (<code>$XDG_STATE_HOME</code>,
+          by default <code>~/.local/state</code>): a log of what was blocked or asked, with links redacted;
+          a signing key for your own allow and deny rules; and salted hashes of payees you recorded with
+          <code>record-payment</code>.</li>
+      </ul>
+    </section>
+
+    <section id="site">
+      <h2><span class="num">05</span>This website</h2>
+      <p>This site is static pages on GitHub Pages, with no cookies, analytics or third-party scripts. GitHub
+        hosts it and handles requests to it under the
+        <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
+        privacy statement</a>.</p>
+    </section>
+
+    <section id="contact">
+      <h2><span class="num">06</span>Contact</h2>
+      <p>Questions or corrections: open an issue at
+        <a href="https://github.com/odaiameera/scamgate/issues">github.com/odaiameera/scamgate/issues</a>.
+        For a security problem, follow <a href="https://github.com/odaiameera/scamgate/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>scamgate is advisory. It can miss scams and flag legitimate actions. MIT licensed. Feed data stays under
+      each provider's terms.</p>
+    <nav aria-label="Footer"><a href="./">Home</a><a href="docs.html">Docs</a><a href="https://github.com/odaiameera/scamgate">GitHub</a><a href="https://github.com/odaiameera/scamgate/issues">Issues</a></nav>
+  </div>
+</footer>
+</body>
+</html>

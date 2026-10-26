@@ -447,7 +447,7 @@ Exact decision match: 24/24
 ```
 
 This is a regression check for the rules, not a real-world detection rate. `uv run pytest`
-runs the unit tests (1012 at v0.3.3; CI runs them on Python 3.11–3.13). They use fixtures and never touch the network.
+runs the unit tests (1013 at v0.3.3; CI runs them on Python 3.11–3.13). They use fixtures and never touch the network.
 
 ## Limits
 
