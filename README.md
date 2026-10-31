@@ -12,13 +12,8 @@
   <a href="#add-it-to-your-agent"><img alt="MCP server" src="https://img.shields.io/badge/MCP-server-8A2BE2"></a>
   <a href="https://github.com/odaiameera/scamgate/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/odaiameera/scamgate?style=flat"></a>
   <a href="https://m8ven.ai/mcp/odaiameera/scamgate?s=readme"><img alt="M8ven Score" src="https://m8ven.ai/badge/mcp/odaiameera/scamgate"></a>
+  <a href="https://mcprush.com/to/scamgate-mcp?ref=badge"><img alt="scamgate MCP on mcprush" src="https://mcprush.com/badge/scamgate-mcp/score.svg"></a>
 </p>
-
-<div align="center">
-
-[![scamgate MCP server](https://mcprush.com/badge/scamgate-mcp/card.svg)](https://mcprush.com/to/scamgate-mcp?ref=badge)
-
-</div>
 
 A self-hosted scam check for AI agents: verify links and payments before the agent acts.
 
