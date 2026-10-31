@@ -14,6 +14,12 @@
   <a href="https://m8ven.ai/mcp/odaiameera/scamgate?s=readme"><img alt="M8ven Score" src="https://m8ven.ai/badge/mcp/odaiameera/scamgate"></a>
 </p>
 
+<div align="center">
+
+[![scamgate MCP server](https://mcprush.com/badge/scamgate-mcp/card.svg)](https://mcprush.com/to/scamgate-mcp?ref=badge)
+
+</div>
+
 A self-hosted scam check for AI agents: verify links and payments before the agent acts.
 
 **Website and docs:** https://odaiameera.github.io/scamgate/
