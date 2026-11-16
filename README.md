@@ -114,13 +114,26 @@ The easiest way for Claude Code. One install adds the enforcing hook, the `check
 `uvx scamgate==0.3.3`, so it needs [uv](https://docs.astral.sh/uv/), and Claude Code v2.1.295 or later so
 that a hook that can't start blocks instead of letting calls through.
 
+The plugin installs from this repository, which is its own plugin marketplace. It isn't listed in the plugin
+directory on claude.ai, so you won't find it by browsing there.
+
+In a Claude Code session:
+
 ```text
 /plugin install scamgate --marketplace odaiameera/scamgate
 ```
 
+Or from your shell:
+
+```bash
+claude plugin install scamgate --marketplace odaiameera/scamgate
+```
+
 On Claude Code before 2.1.275, run `/plugin marketplace add odaiameera/scamgate`, then
-`/plugin install scamgate@scamgate`. What the plugin runs, downloads and stores:
-[claude-plugin/README.md](claude-plugin/README.md).
+`/plugin install scamgate@scamgate`.
+
+New releases don't arrive by themselves: get one with `claude plugin update scamgate@scamgate`. What the
+plugin runs, downloads and stores: [claude-plugin/README.md](claude-plugin/README.md).
 
 ### MCP server only
 
