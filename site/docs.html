@@ -149,9 +149,14 @@ scamgate check-url "https://paypa1.com/login" --intent "buy a ticket"</code></pr
       <p>One install adds the enforcing hook, the three tools and a refresh of the phishing lists every 6 hours.
         It runs <code>uvx scamgate==0.3.3</code> from PyPI, so it needs <a href="https://docs.astral.sh/uv/">uv</a>,
         and Claude Code v2.1.295 or later so a hook that can't start blocks.</p>
+      <p>It installs from the GitHub repository, which is its own plugin marketplace. It isn't listed in the
+        plugin directory on claude.ai. In a Claude Code session:</p>
 <pre class="code" data-lang="text"><code>/plugin install scamgate --marketplace odaiameera/scamgate</code></pre>
+      <p>Or from your shell:</p>
+<pre class="code" data-lang="shell"><code>claude plugin install scamgate --marketplace odaiameera/scamgate</code></pre>
       <p>Before Claude Code 2.1.275: <code>/plugin marketplace add odaiameera/scamgate</code>, then
-        <code>/plugin install scamgate@scamgate</code>. What it runs, downloads and stores:
+        <code>/plugin install scamgate@scamgate</code>. New releases don't arrive by themselves: get one with
+        <code>claude plugin update scamgate@scamgate</code>. What it runs, downloads and stores:
         <a href="https://github.com/odaiameera/scamgate/blob/main/claude-plugin/README.md">claude-plugin/README.md</a>.</p>
       <h3>Claude Code, MCP server only</h3>
 <pre class="code" data-lang="shell"><code>claude mcp add scamgate -- scamgate serve</code></pre>
